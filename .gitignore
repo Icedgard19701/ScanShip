@@ -1,0 +1,19 @@
+# --- Credentials & local config (NEVER commit) ---
+config.py
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Logs & exports (contain internal paths and business data) ---
+logs/
+exports/
+python.log*
+*.log
+
+# --- IDE & local tooling ---
+.venv/
+.claude/
+*.local.json

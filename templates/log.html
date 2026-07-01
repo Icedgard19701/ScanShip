@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SoShipScan — Scan Log</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --navy:       #1C3D5A;
+            --navy-dark:  #152E45;
+            --navy-light: #2A5278;
+            --white:      #FFFFFF;
+            --gray-50:    #F8F9FA;
+            --gray-100:   #F1F3F5;
+            --gray-200:   #DEE2E6;
+            --gray-300:   #CED4DA;
+            --gray-400:   #ADB5BD;
+            --gray-500:   #868E96;
+            --gray-700:   #495057;
+            --gray-900:   #212529;
+            --green:      #2E9E5E;
+            --red:        #DC3545;
+            --green-bg:   #EBF8F1;
+            --red-bg:     #FFF0F0;
+
+            --sat: env(safe-area-inset-top,    0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+            --sal: env(safe-area-inset-left,   0px);
+            --sar: env(safe-area-inset-right,  0px);
+        }
+
+        /* ---- ROOT SHELL ---- */
+        html {
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--gray-900);
+            background: var(--white);
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding-top:    var(--sat);
+            padding-bottom: var(--sab);
+            padding-left:   var(--sal);
+            padding-right:  var(--sar);
+            -webkit-tap-highlight-color: transparent;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* ---- FRAME ---- */
+        .app-frame {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            background: var(--white);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ---- HEADER — 100% identical spec to index.html ---- */
+        .header {
+            background: var(--navy);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 56px;
+            height: 56px;
+            flex-shrink: 0;
+        }
+        .header-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            text-decoration: none;
+            -webkit-tap-highlight-color: transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .header-icon:active { background: rgba(255,255,255,0.12); }
+        .header-icon svg {
+            width: 26px;
+            height: 26px;
+            stroke: var(--white);
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .header-logo { display: flex; align-items: center; }
+        .header-logo-img {
+            height: 30px;
+            width: auto;
+            filter: brightness(0) invert(1);
+        }
+
+        /* ---- APP BODY — flex column, no page scroll ---- */
+        .app-body {
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: var(--white);
+        }
+
+        /* ---- TOOLBAR ---- */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 16px 0;
+            flex-shrink: 0;
+        }
+        .toolbar-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            white-space: nowrap;
+        }
+        .toolbar-subtitle {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-top: 2px;
+        }
+
+        .search-row {
+            display: flex;
+            border: 2px solid var(--gray-300);
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--white);
+            flex: 1;
+            max-width: 320px;
+        }
+        .search-row:focus-within { border-color: var(--navy); }
+        .search-input {
+            flex: 1;
+            min-width: 0;
+            padding: 0 12px;
+            height: 44px;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            font-weight: 500;
+            outline: none;
+            background: transparent;
+            color: var(--gray-900);
+        }
+        .search-input::placeholder { color: var(--gray-400); font-weight: 400; }
+        .btn-search {
+            width: 46px;
+            height: 44px;
+            background: var(--navy);
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-search svg {
+            width: 18px;
+            height: 18px;
+            stroke: var(--white);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .btn-search:active { background: var(--navy-dark); }
+
+        /* Stack toolbar on very small phones */
+        @media (max-width: 479px) {
+            .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+            .search-row { max-width: 100%; }
+        }
+
+        /* ---- RESULTS BAR ---- */
+        .results-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px 8px;
+            flex-shrink: 0;
+        }
+        .results-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--gray-700);
+        }
+        .results-meta { font-size: 11px; font-weight: 600; color: var(--gray-500); }
+        .results-meta .spinner-inline {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--gray-200);
+            border-top-color: var(--navy);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+        }
+
+        /* ---- TABLE WRAPPER — fills remaining body height, no vertical scroll ---- */
+        .table-wrap {
+            flex: 1;
+            min-height: 0;
+            overflow-x: auto;
+            overflow-y: hidden;   /* calcLimit() sizes rows to fit exactly */
+            -webkit-overflow-scrolling: touch;
+            padding: 0 16px;
+        }
+
+        table {
+            width: 100%;
+            min-width: 640px;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        thead tr { background: var(--navy); }
+        thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: rgba(255,255,255,0.85);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        thead th:hover { background: var(--navy-light); }
+        .sort-arrow { display: inline-block; margin-left: 3px; opacity: 0.35; font-size: 9px; }
+        thead th.sort-asc  .sort-arrow,
+        thead th.sort-desc .sort-arrow { opacity: 1; }
+
+        tbody tr { border-bottom: 1px solid var(--gray-100); transition: background 0.12s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: var(--gray-50); }
+        tbody td {
+            padding: 9px 12px;
+            color: var(--gray-900);
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        tbody td.dim { color: var(--gray-500); }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .badge-scanned { background: var(--green-bg); color: var(--green); }
+        .badge-scanned .badge-dot { background: var(--green); }
+        .badge-pending { background: var(--gray-100); color: var(--gray-500); }
+        .badge-pending .badge-dot { background: var(--gray-400); }
+
+        /* ---- SKELETON ---- */
+        .skel td { padding: 10px 12px; }
+        .skel-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.2s infinite;
+        }
+        @keyframes shimmer { to { background-position: -200% 0; } }
+
+        /* ---- EMPTY STATE ---- */
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--gray-400);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .empty-state svg {
+            width: 44px; height: 44px;
+            stroke: var(--gray-300);
+            fill: none; stroke-width: 1;
+            stroke-linecap: round; stroke-linejoin: round;
+            margin: 0 auto 10px;
+            display: block;
+        }
+
+        /* ---- PAGINATION ---- */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        .pg-btn {
+            height: 36px;
+            padding: 0 14px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--white);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--gray-700);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            -webkit-tap-highlight-color: transparent;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .pg-btn:hover:not(:disabled) { border-color: var(--navy); color: var(--navy); }
+        .pg-btn:active:not(:disabled) { background: var(--gray-50); }
+        .pg-btn:disabled { opacity: 0.35; cursor: default; }
+        .pg-btn svg {
+            width: 14px; height: 14px;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .pg-info {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            white-space: nowrap;
+            padding: 0 4px;
+        }
+
+        /* ---- TOAST ---- */
+        .toast {
+            position: fixed;
+            bottom: calc(var(--sab) + 20px);
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            padding: 12px 22px;
+            border-radius: 10px;
+            color: var(--white);
+            font-weight: 600;
+            font-size: 14px;
+            z-index: 999;
+            opacity: 0;
+            transition: all 0.25s ease;
+            max-width: min(85%, 340px);
+            text-align: center;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .toast-error { background: var(--red); }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ================================================
+           RESPONSIVE
+           ================================================ */
+
+        @media (min-width: 430px) {
+            .header          { padding: 14px 20px; }
+            .header-logo-img { height: 34px; }
+            .toolbar         { padding: 20px 20px 0; }
+            .results-bar     { padding: 12px 20px 8px; }
+            .table-wrap      { padding: 0 20px; }
+            .pagination      { padding: 12px 20px; }
+        }
+
+        /* Tablets & desktop — centered card, no scroll anywhere */
+        @media (min-width: 768px) {
+            body {
+                background: var(--gray-100);
+                padding: 0;
+                align-items: center;
+                justify-content: center;
+            }
+            .app-frame {
+                width: clamp(700px, 85vw, 1150px);
+                height: 85dvh;
+                max-height: 800px;
+                flex: none;
+                border-radius: 20px;
+                overflow: hidden;
+                box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+            }
+            .app-body {
+                border-bottom-left-radius: 20px;
+                border-bottom-right-radius: 20px;
+            }
+            .header          { padding: 14px 24px; }
+            .header-logo-img { height: 36px; }
+            .toolbar         { padding: 20px 24px 0; }
+            .results-bar     { padding: 12px 24px 8px; }
+            .table-wrap      { padding: 0 24px; }
+            .pagination      { padding: 12px 24px; }
+            .toolbar-title   { font-size: 20px; }
+            table            { min-width: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-frame">
+
+    <!-- ========== HEADER ========== -->
+    <div class="header">
+        <!-- Left: back to Scanner -->
+        <a href="{{ base_url }}/" class="header-icon" title="Back to Scanner">
+            <svg viewBox="0 0 24 24">
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+        </a>
+        <div class="header-logo">
+            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" class="header-logo-img" viewBox="0 0 11703.2 3563.18" aria-label="SWCorp Luxury Home Brands"><defs><style>.fil0{fill:#00375C;fill-rule:nonzero}</style></defs><g><g><g><g><g><polygon class="fil0" points="93.06,3493.3 247.68,3493.3 247.68,3541.93 30.47,3541.93 30.47,3071.92 93.06,3071.92 "></polygon><path class="fil0" d="M578.38 3351.84c0,34.81 -1.43,74.71 24.51,104.69 24.64,28.69 72.1,44.85 113.04,44.85 40.15,0 84.09,-15.51 110.04,-41.72 29.72,-29.98 27.51,-71.05 27.51,-107.82l0 -279.92 62.45 0 0 294.26c0,51.11 -4.43,91.66 -49.02,130.24 -38.72,34.95 -94.4,53.58 -150.98,53.58 -52.81,0 -107.04,-16.81 -144.98,-47.97 -49.02,-39.24 -55.01,-82.27 -55.01,-135.85l0 -294.26 62.44 0 0 279.92z"></path><polygon class="fil0" points="1202.23,3071.92 1273.68,3071.92 1388.15,3248.98 1502.75,3071.92 1574.06,3071.92 1422.44,3298.78 1588.15,3541.93 1516.82,3541.93 1388.15,3348.71 1259.6,3541.93 1188.15,3541.93 1353.99,3298.78 "></polygon><path class="fil0" d="M1923.47 3351.84c0,34.81 -1.43,74.71 24.51,104.69 24.52,28.69 72.23,44.85 113.04,44.85 40.15,0 84.09,-15.51 110.04,-41.72 29.72,-29.98 27.51,-71.05 27.51,-107.82l0 -279.92 62.45 0 0 294.26c0,51.11 -4.43,91.66 -49.02,130.24 -38.72,34.95 -94.4,53.58 -150.98,53.58 -52.81,0 -107.04,-16.81 -144.98,-47.97 -49.02,-39.24 -55.01,-82.27 -55.01,-135.85l0 -294.26 62.44 0 0 279.92z"></path><path class="fil0" d="M2642.36 3541.93l-62.44 0 0 -470.01 81.09 0c106.39,0 205.21,23.73 205.21,129.59 0,72.36 -54.23,123.47 -140.54,129.73l178.48 210.68 -76.54 0 -169.61 -206.39 -15.65 0 0 206.39zm0 -252.4l0 0 19.43 0c70.66,0 141.99,-11.22 141.99,-84.23 0,-77.32 -67.67,-84.75 -142.77,-84.75l-18.65 0 0 168.97z"></path><polygon class="fil0" points="3125.68,3071.92 3197.77,3071.92 3340.53,3281.31 3483.3,3071.92 3555.39,3071.92 3371.7,3339.98 3371.7,3541.93 3309.24,3541.93 3309.24,3339.98 "></polygon><polygon class="fil0" points="4614.96,3262.66 4614.96,3071.92 4677.42,3071.92 4677.42,3541.93 4614.96,3541.93 4614.96,3311.29 4327.87,3311.29 4327.87,3541.93 4265.43,3541.93 4265.43,3071.92 4327.87,3071.92 4327.87,3262.66 "></polygon><path class="fil0" d="M5557.72 3307.51c0,135.33 -132.33,242.49 -292.17,242.49 -159.85,0 -292.17,-107.17 -292.17,-242.49 0,-134.68 132.33,-243.67 292.17,-243.67 159.85,0 292.17,109 292.17,243.67zm-521.89 -0.65l0 0c0,105.99 102.61,194.51 229.72,194.51 127.12,0 229.72,-88.52 229.72,-194.51 0,-106.52 -101.04,-194.39 -229.72,-194.39 -128.68,0 -229.72,87.87 -229.72,194.39z"></path><polygon class="fil0" points="5923.41,3045.06 6127.19,3439.71 6331.62,3045.06 6445.44,3541.93 6381.42,3541.93 6309.32,3224.08 6307.89,3224.08 6127.19,3561.23 5947.27,3224.08 5945.7,3224.08 5873.61,3541.93 5809.73,3541.93 "></polygon><polygon class="fil0" points="6724.97,3071.92 7015.7,3071.92 7015.7,3120.55 6787.55,3120.55 6787.55,3260.18 7009.06,3260.18 7009.06,3308.81 6787.55,3308.81 6787.55,3493.3 7015.7,3493.3 7015.7,3541.93 6724.97,3541.93 "></polygon><path class="fil0" d="M7767.32 3071.92l92.31 0c101.83,0 187.35,31.16 187.35,127.12 0,38.07 -17.08,70.53 -55.02,91.66 66.89,13.69 106.26,64.27 106.26,120.33 0,93.49 -89.96,130.9 -200.79,130.9l-130.11 0 0 -470.01zm62.45 206.91l0 0 23.85 0c70.66,0 130.9,-6.78 130.9,-79.79 0,-71.05 -53.58,-78.48 -130.11,-78.48l-24.64 0 0 158.28zm0 214.47l0 0 62.57 0c69.88,0 143.42,-14.34 143.42,-86.05 0,-72.88 -83.18,-83.44 -151.63,-83.44l-54.36 0 0 169.48z"></path><path class="fil0" d="M8460.26 3541.93l-62.44 0 0 -470.01 81.09 0c106.39,0 205.21,23.73 205.21,129.59 0,72.36 -54.23,123.47 -140.55,129.73l178.49 210.68 -76.54 0 -169.61 -206.39 -15.65 0 0 206.39zm0 -252.4l0 0 19.43 0c70.66,0 141.99,-11.22 141.99,-84.23 0,-77.32 -67.67,-84.75 -142.77,-84.75l-18.65 0 0 168.97z"></path><path class="fil0" d="M9093.11 3408.55l-67.67 133.38 -68.45 0 258.8 -492.43 252.02 492.43 -69.11 0 -66.23 -133.38 -239.37 0zm121.25 -236.89l0 0 -95.96 188.26 189.57 0 -93.61 -188.26z"></path><polygon class="fil0" points="9740.7,3051.98 10177.84,3435.94 10177.84,3071.92 10240.3,3071.92 10240.3,3563.18 9803.14,3179.74 9803.14,3541.93 9740.7,3541.93 "></polygon><path class="fil0" d="M10565.06 3071.92l105.61 0c84.09,0 152.4,9.39 218.63,56.71 63.88,46.15 92.96,109.13 92.96,178.88 0,68.58 -29.72,129.07 -91.52,175.23 -66.89,49.8 -133.77,59.19 -221.51,59.19l-104.17 0 0 -470.01zm107.82 421.38l0 0c68.46,0 125.69,-8.08 177.05,-48.63 46.02,-36.12 69.88,-85.4 69.88,-137.8 0,-53.58 -24.51,-105.35 -72.88,-140.81 -51.37,-38.07 -107.82,-45.5 -174.06,-45.5l-45.23 0 0 372.75 45.23 0z"></path><path class="fil0" d="M11531.81 3163.58c-22.29,-32.46 -49.15,-51.11 -96.61,-51.11 -49.93,0 -92.96,29.85 -92.96,72.88 0,40.54 49.81,59.19 87.74,73.53l37.15 13.82c72.88,26.73 134.56,57.23 134.56,132.07 0,82.27 -78.88,145.23 -176.28,145.23 -89.96,0 -156.84,-48.63 -174.7,-121.5l61.02 -14.34c8.21,47.97 52.02,87.21 112.25,87.21 60.23,0 115.25,-38.58 115.25,-91.65 0,-54.76 -51.37,-73.53 -103.38,-93.49l-34.16 -12.38c-65.45,-25.03 -121.9,-53.06 -121.9,-120.33 0,-73.01 73.53,-119.68 156.84,-119.68 62.45,0 115.25,26.73 144.97,72.88l-49.8 26.86z"></path></g></g><g><path class="fil0" d="M6575.88 719.29c-156.06,-161.27 -371.97,-260.22 -598.3,-260.22 -437.01,0 -790.72,379.78 -790.72,811.72 0,431.8 356.32,811.58 795.94,811.58 221.11,0 437.02,-104.04 593.08,-260.1l0 270.53c-168.96,122.29 -377.18,192.44 -585.26,192.44 -554.1,0 -1022.41,-450.06 -1022.41,-1006.62 0,-561.93 460.49,-1022.42 1022.41,-1022.42 218.5,0 411.07,62.45 585.26,192.44l0 270.66z"></path><path class="fil0" d="M8891.35 1273.4c0,564.38 -462.97,1011.84 -1022.28,1011.84 -559.32,0 -1022.41,-447.46 -1022.41,-1011.84 0,-561.93 463.09,-1017.2 1022.41,-1017.2 559.31,0 1022.28,455.28 1022.28,1017.2zm-1826.17 -2.61l0 0c0,442.23 359.04,811.58 803.89,811.58 444.84,0 803.77,-369.35 803.77,-811.58 0,-444.85 -353.72,-811.72 -803.77,-811.72 -450.06,0 -803.89,366.87 -803.89,811.72z"></path><path class="fil0" d="M9406.73 2251.47l-218.64 0 0 -1961.5 283.57 0c372.09,0 717.98,98.96 717.98,541.19 0,301.69 -189.83,514.99 -491.65,541.06l624.38 879.25 -267.92 0 -593.09 -860.99 -54.62 0 0 860.99zm0 -1053.56l0 0 67.54 0c247.19,0 496.87,-46.8 496.87,-351.23 0,-322.56 -236.64,-353.71 -499.47,-353.71l-64.93 0 0 704.94z"></path><path class="fil0" d="M10816.89 2251.47l-218.64 0 0 -1961.5 322.68 0c169.1,0 343.28,5.21 486.44,104.04 145.63,101.57 221.12,273.27 221.12,447.46 0,158.8 -65.06,320.07 -187.35,421.51 -132.6,109.25 -301.69,129.98 -465.57,129.98l-158.67 0 0 858.52zm0 -1061.38l0 0 145.62 0c241.99,0 447.46,-72.88 447.46,-353.85 0,-319.94 -257.63,-343.27 -512.51,-343.27l-80.57 0 0 697.12z"></path></g><path class="fil0" d="M-0 0l0 2586.91 4604.99 0 0 -2586.91 -4604.99 0zm822.76 2285.24l0 0c-314.73,0 -548.88,-202.86 -611.34,-507.15l213.3 -59.85c28.69,200.26 182.14,364.14 392.82,364.14 210.69,0 403.26,-161.27 403.26,-382.38 0,-228.94 -179.53,-307.04 -361.67,-390.22l-119.55 -52.03c-228.94,-104.03 -426.72,-221.11 -426.72,-502.08 0,-304.43 257.63,-499.47 548.88,-499.47 218.51,0 403.26,111.86 507.3,304.3l-174.32 111.86c-77.97,-135.2 -171.57,-213.29 -338.2,-213.29 -174.18,0 -325.15,124.9 -325.15,304.43 0,169.09 174.31,247.06 307.04,306.91l129.98 57.23c255.02,111.86 470.92,239.37 470.92,551.49 0,343.4 -275.74,606.11 -616.55,606.11zm2794.1 67.67l0 0 -634.8 -1578.98 -634.68 1578.98 -751.88 -2062.94 236.77 0 515.11 1469.86 634.68 -1571.29 634.8 1571.29 515.12 -1469.86 236.63 0 -751.76 2062.94z"></path></g></g></svg>
+        </div>
+        <!-- Right: Scan Log (keeps header symmetric) -->
+        <a href="{{ base_url }}/log" class="header-icon" title="Scan Log" style="text-decoration:none;">
+            <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="3" y1="15" x2="21" y2="15"/>
+                <line x1="9" y1="9" x2="9" y2="21"/>
+            </svg>
+        </a>
+    </div>
+
+    <!-- ========== APP BODY ========== -->
+    <div class="app-body">
+
+        <div class="toolbar">
+            <div>
+                <div class="toolbar-title">Scan Log</div>
+                <div class="toolbar-subtitle">History · AcuSoShipScanLog</div>
+            </div>
+            <div class="search-row">
+                <input type="text" id="searchInput" class="search-input"
+                       placeholder="Order, Shipment or SKU…"
+                       autocomplete="off" inputmode="text">
+                <button class="btn-search" onclick="triggerSearch()">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="results-bar">
+            <div class="results-label">Records</div>
+            <div class="results-meta" id="resultsMeta">Loading…</div>
+        </div>
+
+        <div class="table-wrap">
+            <table id="logTable">
+                <thead>
+                    <tr>
+                        <th data-col="ScanStatus"   class="sort-desc">Status <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="ScanDate">Scan Date <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="OrderNbr">Order Nbr. <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="ShipmentNbr">Shipment Nbr. <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="ShipmentDate">Ship. Date <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="InventoryID">Item / SKU <span class="sort-arrow">&#9660;</span></th>
+                        <th data-col="Status">Acu. Status <span class="sort-arrow">&#9660;</span></th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="paginationBar">
+            <button class="pg-btn" id="btnPrev" onclick="goPage(currentPage - 1)" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                Prev
+            </button>
+            <div class="pg-info" id="pgInfo">—</div>
+            <button class="pg-btn" id="btnNext" onclick="goPage(currentPage + 1)" disabled>
+                Next
+                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+
+    </div><!-- /app-body -->
+</div><!-- /app-frame -->
+
+<div id="toast" class="toast"></div>
+
+<script>
+    // ---- Config ----
+    var API_KEY = 'SWCORP-SCAN-2026';
+
+    // ---- API helper ----
+    var BASE_URL = '{{ base_url }}';
+    function apiFetch(url, options) {
+        options = options || {};
+        options.headers = Object.assign({}, options.headers, { 'X-API-Key': API_KEY });
+        return fetch(BASE_URL + url, options);
+    }
+
+    // ---- State ----
+    var currentPage  = 1;
+    var totalPages   = 1;
+    var totalRecords = 0;
+    var currentQ     = '';
+    var sortCol      = 'ScanDate';
+    var sortDir      = 'desc';
+    var debounceTimer;
+    var resizeTimer;
+
+    var LIMIT        = 10;   // initial safe default; recalculated after first paint
+    var ROW_H        = 37;   // updated to real measured height after first render
+    var SAFETY_PX    = 4;    // extra buffer so no row is ever partially visible
+
+    // ---- Dynamic page limit ----
+    // Measures the exact rendered height of a real <tr> and the table wrapper,
+    // then returns the max rows that fit with zero partial-row visibility.
+    // Minimum 10 rows.
+    function calcLimit() {
+        // Measure real row height from a rendered row (most accurate)
+        var firstRow = document.querySelector('tbody tr');
+        if (firstRow) {
+            ROW_H = firstRow.getBoundingClientRect().height;
+        }
+
+        var wrap = document.querySelector('.table-wrap');
+        if (!wrap) {
+            // Pre-paint fallback
+            var chrome = 56 + 62 + 40 + 52 + 38;
+            var avail  = window.innerHeight - chrome - 8 - SAFETY_PX;
+            return Math.max(10, Math.floor(avail / ROW_H));
+        }
+
+        var wrapH  = wrap.getBoundingClientRect().height;
+        var thead  = document.querySelector('thead');
+        var theadH = thead ? thead.getBoundingClientRect().height : 38;
+        var avail  = wrapH - theadH - SAFETY_PX;
+
+        return Math.max(10, Math.floor(avail / ROW_H));
+    }
+
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            var next = calcLimit();
+            if (next !== LIMIT) {
+                LIMIT = next;
+                currentPage = 1;
+                loadLog();
+            }
+        }, 350);
+    });
+
+    var COLS = [
+        { key: 'ScanStatus',   label: 'Status' },
+        { key: 'ScanDate',     label: 'Scan Date' },
+        { key: 'OrderNbr',     label: 'Order Nbr.' },
+        { key: 'ShipmentNbr',  label: 'Shipment Nbr.' },
+        { key: 'ShipmentDate', label: 'Ship. Date' },
+        { key: 'InventoryID',  label: 'Item / SKU' },
+        { key: 'Status',       label: 'Acu. Status' },
+    ];
+
+    // ---- Toast ----
+    function showToast(msg, type) {
+        var t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast toast-' + type + ' show';
+        setTimeout(function() { t.classList.remove('show'); }, 2500);
+    }
+
+    // ---- Search ----
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            currentQ    = document.getElementById('searchInput').value.trim();
+            currentPage = 1;
+            loadLog();
+        }, 400);
+    });
+
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            clearTimeout(debounceTimer);
+            currentQ    = this.value.trim();
+            currentPage = 1;
+            loadLog();
+        }
+    });
+
+    function triggerSearch() {
+        clearTimeout(debounceTimer);
+        currentQ    = document.getElementById('searchInput').value.trim();
+        currentPage = 1;
+        loadLog();
+    }
+
+    // ---- Pagination ----
+    function goPage(p) {
+        if (p < 1 || p > totalPages) return;
+        currentPage = p;
+        loadLog();
+    }
+
+    // ---- Skeleton rows ----
+    function showSkeleton() {
+        var widths = [60, 110, 80, 90, 80, 100, 70];
+        var rows = '';
+        for (var i = 0; i < LIMIT; i++) {
+            rows += '<tr class="skel">';
+            widths.forEach(function(w) {
+                rows += '<td><div class="skel-bar" style="width:' + w + 'px"></div></td>';
+            });
+            rows += '</tr>';
+        }
+        document.getElementById('tableBody').innerHTML = rows;
+        document.getElementById('resultsMeta').innerHTML = '<span class="spinner-inline"></span>';
+    }
+
+    // ---- Fetch ----
+    // silent=true → background auto-refresh, skip skeleton to avoid flicker
+    async function loadLog(silent) {
+        if (!silent) showSkeleton();
+
+        var params = new URLSearchParams({
+            page:     currentPage,
+            limit:    LIMIT,
+            sort_col: sortCol,
+            sort_dir: sortDir
+        });
+        if (currentQ) params.append('q', currentQ);
+
+        try {
+            var res  = await apiFetch('/api/log?' + params.toString());
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            var data = await res.json();
+
+            totalPages   = data.pages || 1;
+            totalRecords = data.total || 0;
+            currentPage  = data.page  || 1;
+
+            renderRows(data.logs || []);
+
+            // After first real render, re-measure row height and adjust limit if needed.
+            // This corrects any pre-paint estimate that caused a partial row to show.
+            requestAnimationFrame(function() {
+                var correct = calcLimit();
+                if (correct !== LIMIT && !silent) {
+                    LIMIT = correct;
+                    loadLog(true);
+                }
+            });
+
+            updatePagination();
+
+            var from = (currentPage - 1) * LIMIT + 1;
+            var to   = Math.min(currentPage * LIMIT, totalRecords);
+            document.getElementById('resultsMeta').textContent =
+                totalRecords === 0 ? 'No records' :
+                totalRecords + ' total · showing ' + from + '–' + to;
+
+        } catch(err) {
+            if (!silent) {
+                document.getElementById('tableBody').innerHTML =
+                    '<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--gray-400);font-size:13px;">Connection error — please try again.</td></tr>';
+                document.getElementById('resultsMeta').textContent = 'Error';
+                showToast('Connection error', 'error');
+            }
+        }
+    }
+
+    // ---- Render rows ----
+    function renderRows(logs) {
+        if (logs.length === 0) {
+            document.getElementById('tableBody').innerHTML =
+                '<tr><td colspan="7">'
+                + '<div class="empty-state">'
+                + '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/>'
+                + '<line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>'
+                + '<line x1="9" y1="9" x2="9" y2="21"/></svg>'
+                + 'No records found.'
+                + '</div></td></tr>';
+            return;
+        }
+
+        var html = '';
+        logs.forEach(function(row) {
+            html += '<tr>';
+            COLS.forEach(function(col) {
+                var val = row[col.key];
+                if (col.key === 'ScanStatus') {
+                    html += '<td>' + statusBadge(val) + '</td>';
+                } else if (col.key === 'ScanDate' || col.key === 'ShipmentDate') {
+                    html += '<td class="dim">' + esc(fmtDate(val)) + '</td>';
+                } else if (val === null || val === undefined || val === '') {
+                    html += '<td class="dim">—</td>';
+                } else {
+                    html += '<td>' + esc(String(val)) + '</td>';
+                }
+            });
+            html += '</tr>';
+        });
+        document.getElementById('tableBody').innerHTML = html;
+    }
+
+    // ---- Pagination controls ----
+    function updatePagination() {
+        document.getElementById('btnPrev').disabled = (currentPage <= 1);
+        document.getElementById('btnNext').disabled = (currentPage >= totalPages);
+        document.getElementById('pgInfo').textContent = 'Page ' + currentPage + ' of ' + totalPages;
+    }
+
+    // ---- Column sort (server-side — triggers a new fetch) ----
+    document.getElementById('logTable').addEventListener('click', function(e) {
+        var th = e.target.closest('th[data-col]');
+        if (!th) return;
+        var col = th.getAttribute('data-col');
+        if (sortCol === col) {
+            sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortCol = col;
+            sortDir = 'asc';
+        }
+
+        document.querySelectorAll('thead th').forEach(function(t) {
+            t.classList.remove('sort-asc', 'sort-desc');
+            var arrow = t.querySelector('.sort-arrow');
+            if (arrow) arrow.innerHTML = '&#9660;';
+        });
+        th.classList.add('sort-' + sortDir);
+        var arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.innerHTML = sortDir === 'asc' ? '&#9650;' : '&#9660;';
+
+        currentPage = 1;
+        loadLog();
+    });
+
+    // ---- Helpers ----
+    function statusBadge(val) {
+        if (!val) return '<span class="badge badge-pending"><span class="badge-dot"></span>—</span>';
+        var cls = val === 'Scanned' ? 'badge-scanned' : 'badge-pending';
+        return '<span class="badge ' + cls + '"><span class="badge-dot"></span>' + esc(val) + '</span>';
+    }
+
+    function fmtDate(val) {
+        if (!val) return '—';
+        try {
+            // Date-only (YYYY-MM-DD): render as-is, no timezone shift
+            if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                var p = val.split('-');
+                return p[1] + '/' + p[2] + '/' + p[0];
+            }
+            // Datetime: convert to Miami time (America/New_York)
+            var d = new Date(val);
+            if (isNaN(d.getTime())) return val;
+            var parts = new Intl.DateTimeFormat('en-US', {
+                timeZone:  'America/New_York',
+                year:      'numeric',
+                month:     '2-digit',
+                day:       '2-digit',
+                hour:      '2-digit',
+                minute:    '2-digit',
+                hourCycle: 'h23'
+            }).formatToParts(d);
+            var get = function(type) {
+                var found = parts.filter(function(x) { return x.type === type; });
+                return found.length ? found[0].value : '00';
+            };
+            return get('month') + '/' + get('day') + '/' + get('year')
+                   + ' ' + get('hour') + ':' + get('minute');
+        } catch(e) { return val; }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ---- Auto-refresh ----
+    var _refreshTimer = null;
+    var REFRESH_MS    = 10000;   // 10 seconds
+
+    function startRefresh() {
+        if (_refreshTimer) return;
+        _refreshTimer = setInterval(function() {
+            loadLog(true);   // silent — no skeleton, no error toast
+        }, REFRESH_MS);
+    }
+
+    function stopRefresh() {
+        clearInterval(_refreshTimer);
+        _refreshTimer = null;
+    }
+
+    // Pause when tab goes to background, resume (+ immediate refresh) when it comes back
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopRefresh();
+        } else {
+            loadLog(true);
+            startRefresh();
+        }
+    });
+
+    // Defer initial load until the browser has painted so
+    // getBoundingClientRect() returns real pixel heights for calcLimit().
+    requestAnimationFrame(function() {
+        LIMIT = calcLimit();
+        loadLog();       // first load: show skeleton
+        startRefresh();  // then start polling
+    });
+</script>
+
+</body>
+</html>
