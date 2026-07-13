@@ -386,7 +386,7 @@ def require_company_network(f):
         except ValueError:
             ip = None
         if ip is None or not any(ip in net for net in _ALLOWED_NETWORKS):
-            return jsonify({"error": "Esta función solo está disponible conectado a la red WiFi de la empresa"}), 403
+            return jsonify({"error": "This feature is only available on the company WiFi network"}), 403
         return f(*args, **kwargs)
     return decorated
 
