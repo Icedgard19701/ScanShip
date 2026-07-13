@@ -634,6 +634,7 @@
 
     // ---- State ----
     var currentOrder  = '';
+    var currentOrderType = '';
     var currentUser   = 'User';
     var completedTimer = null;
     var _toggleBusy   = false;
@@ -709,12 +710,14 @@
 
             if (data.done > 0 && data.done === data.total) {
                 currentOrder = q;
+                currentOrderType = data.items[0].OrderType || '';
                 document.getElementById('searchInput').value = '';
                 showCompleted();
                 return;
             }
 
             currentOrder = q;
+            currentOrderType = data.items[0].OrderType || '';
             renderOrder(data);
 
         } catch (err) {
@@ -766,7 +769,7 @@
             var res = await apiFetch('/api/scan', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ OrderNbr: currentOrder, InventoryID: sku, ScanUser: currentUser })
+                body:    JSON.stringify({ OrderNbr: currentOrder, OrderType: currentOrderType, InventoryID: sku, ScanUser: currentUser })
             });
             var data = await res.json();
 
@@ -806,7 +809,7 @@
                 var res  = await apiFetch('/api/unscan', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body:    JSON.stringify({ ScanID: scanId, OrderNbr: currentOrder })
+                    body:    JSON.stringify({ ScanID: scanId, OrderNbr: currentOrder, OrderType: currentOrderType })
                 });
                 var data = {};
                 try { data = await res.json(); } catch (_) {}

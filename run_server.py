@@ -4,22 +4,19 @@ import time
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.exceptions import NotFound
 from waitress import serve
-from app import app, sync_from_acumatica
-from sync_data_provider import export_to_excel
+from app import app, sync_from_acumatica, _process_pending_actions
 from config import FLASK_PORT, SYNC_INTERVAL_MINUTES
 
 app.config['APPLICATION_ROOT'] = '/scanship'
 
 
 def _boot_sync():
-    result = sync_from_acumatica()
-    if result is not None:
-        export_to_excel()
+    sync_from_acumatica()
+    _process_pending_actions()
     while True:
         time.sleep(SYNC_INTERVAL_MINUTES * 60)
-        result = sync_from_acumatica()
-        if result is not None:
-            export_to_excel()
+        sync_from_acumatica()
+        _process_pending_actions()
 
 
 threading.Thread(target=_boot_sync, daemon=True).start()

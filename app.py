@@ -10,14 +10,16 @@ import threading
 import functools
 import time
 import logging
+import ipaddress
 import requests as http_requests
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-from sync_data_provider import export_to_excel
 from config import (
-    SQL_CONN_STR, TABLE_SHIPMENTS, TABLE_SCANLOG,
-    FLASK_HOST, FLASK_PORT, API_KEY,
-    ODATA_URL, ODATA_USER, ODATA_PASS, SYNC_INTERVAL_MINUTES
+    SQL_CONN_STR, TABLE_SHIPMENTS, TABLE_SCANLOG, TABLE_ACTIONS,
+    FLASK_HOST, FLASK_PORT, API_KEY, ALLOWED_NETWORKS,
+    ODATA_URL, ODATA_USER, ODATA_PASS, SYNC_INTERVAL_MINUTES,
+    ODATA_TOKEN_URL, ODATA_REVOKE_URL, ODATA_CLIENT_ID, ODATA_CLIENT_SECRET,
+    REST_BASE_URL, ACTION_MAX_ATTEMPTS
 )
 
 _MIAMI = ZoneInfo("America/New_York")
@@ -41,6 +43,73 @@ _last_sync_count  = None   # records upserted
 _last_sync_error  = None   # error message if last sync failed
 _sync_lock        = threading.Lock()
 
+# ---- OAuth token cache (Acumatica Connected Application — password grant) ----
+_token_cache = {"access_token": None, "refresh_token": None, "expires_at": 0}
+
+
+def _get_access_token():
+    """Return a cached access token, refreshing/requesting a new one as needed."""
+    now = time.time()
+    if _token_cache["access_token"] and now < _token_cache["expires_at"] - 30:
+        return _token_cache["access_token"]
+
+    if _token_cache["refresh_token"]:
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": _token_cache["refresh_token"],
+            "client_id": ODATA_CLIENT_ID,
+            "client_secret": ODATA_CLIENT_SECRET,
+        }
+    else:
+        data = {
+            "grant_type": "password",
+            "username": ODATA_USER,
+            "password": ODATA_PASS,
+            "scope": "api offline_access",
+            "client_id": ODATA_CLIENT_ID,
+            "client_secret": ODATA_CLIENT_SECRET,
+        }
+
+    resp = http_requests.post(ODATA_TOKEN_URL, data=data, timeout=30)
+    if not resp.ok and _token_cache["refresh_token"]:
+        # Refresh token may have expired/been revoked — fall back to a fresh password login
+        _token_cache["refresh_token"] = None
+        return _get_access_token()
+    resp.raise_for_status()
+
+    token_data = resp.json()
+    _token_cache["access_token"]  = token_data["access_token"]
+    _token_cache["refresh_token"] = token_data.get("refresh_token", _token_cache["refresh_token"])
+    _token_cache["expires_at"]    = now + token_data.get("expires_in", 3600)
+    return _token_cache["access_token"]
+
+
+def _revoke_access_token():
+    """
+    Explicitly end the current Acumatica API session instead of waiting for it to expire.
+    Intended for one-off/manual scripts (not the long-running server, which should keep
+    reusing its cached token) — helps stay under Acumatica's concurrent API login limit.
+    """
+    for token, hint in (
+        (_token_cache.get("refresh_token"), "refresh_token"),
+        (_token_cache.get("access_token"),  "access_token"),
+    ):
+        if not token:
+            continue
+        try:
+            http_requests.post(ODATA_REVOKE_URL, data={
+                "token": token,
+                "token_type_hint": hint,
+                "client_id": ODATA_CLIENT_ID,
+                "client_secret": ODATA_CLIENT_SECRET,
+            }, timeout=15)
+        except Exception as exc:
+            print(f"[TOKEN] revoke ({hint}) failed: {exc}")
+
+    _token_cache["access_token"]  = None
+    _token_cache["refresh_token"] = None
+    _token_cache["expires_at"]    = 0
+
 
 def sync_from_acumatica():
     """
@@ -52,8 +121,10 @@ def sync_from_acumatica():
 
     with _sync_lock:
         session = http_requests.Session()
-        session.auth    = (ODATA_USER, ODATA_PASS)
-        session.headers.update({"Accept": "application/json"})
+        session.headers.update({
+            "Accept": "application/json",
+            "Authorization": f"Bearer {_get_access_token()}",
+        })
 
         records = []
         url = ODATA_URL
@@ -142,20 +213,26 @@ def sync_from_acumatica():
 
             conn.commit()
 
-            # Propagate ShipmentNbr_2 / InventoryID_2 into any log rows that still have NULLs
+            # Keep log rows in sync with the latest Acumatica values on every sync —
+            # ShipmentNbr_2/InventoryID_2 only fill in when still NULL, the rest always refresh.
             fix_cursor = conn.cursor()
             fix_cursor.execute(f"""
                 UPDATE l
-                SET l.ShipmentNbr_2 = s.ShipmentNbr_2,
-                    l.InventoryID_2  = s.InventoryID_2
+                SET l.Status        = s.Status,
+                    l.ShippedQty    = s.ShippedQty,
+                    l.ShipmentDate  = s.ShipmentDate,
+                    l.OrderType     = s.OrderType,
+                    l.AccountID     = s.AccountID,
+                    l.WarehouseID   = s.WarehouseID,
+                    l.CustomerID    = s.CustomerID,
+                    l.ShipmentNbr_2 = COALESCE(l.ShipmentNbr_2, s.ShipmentNbr_2),
+                    l.InventoryID_2 = COALESCE(l.InventoryID_2, s.InventoryID_2)
                 FROM {TABLE_SCANLOG} l
                 JOIN {TABLE_SHIPMENTS} s
                     ON  s.ShipmentNbr = l.ShipmentNbr
                     AND s.OrderNbr    = l.OrderNbr
                     AND s.InventoryID = l.InventoryID
                     AND s.LineNbr     = l.LineNbr
-                WHERE l.ShipmentNbr_2 IS NULL
-                   OR l.InventoryID_2  IS NULL
             """)
             fix_cursor.close()
             conn.commit()
@@ -183,10 +260,106 @@ def sync_from_acumatica():
 def _sync_loop():
     """Background thread: sync on startup then every SYNC_INTERVAL_MINUTES."""
     while True:
-        result = sync_from_acumatica()
-        if result is not None:
-            export_to_excel()
+        sync_from_acumatica()
+        _process_pending_actions()
         time.sleep(SYNC_INTERVAL_MINUTES * 60)
+
+
+# ---- Order actions (ReopenOrder / UsrShipLoadDate / CompleteOrder) ----
+
+def _acumatica_rest(method, path, **kwargs):
+    """Call Acumatica's contract-based REST API using the shared OAuth token."""
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {_get_access_token()}",
+    }
+    resp = http_requests.request(method, f"{REST_BASE_URL}{path}", headers=headers, timeout=60, **kwargs)
+    if not resp.ok:
+        raise RuntimeError(f"{method} {path} -> {resp.status_code}: {resp.text[:500]}")
+    return resp
+
+
+def _enqueue_order_action(order_type, order_nbr, ship_load_date):
+    """Mark an order as ready to be pushed to Acumatica (Reopen/Update/Complete)."""
+    db_execute(f"""
+        MERGE {TABLE_ACTIONS} AS target
+        USING (VALUES (?, ?, ?)) AS source (OrderType, OrderNbr, ShipLoadDate)
+        ON  target.OrderType = source.OrderType
+        AND target.OrderNbr  = source.OrderNbr
+        WHEN MATCHED THEN UPDATE SET
+            Status       = CASE WHEN target.Status = 'Synced' THEN 'Pending' ELSE target.Status END,
+            Attempts     = CASE WHEN target.Status = 'Synced' THEN 0 ELSE target.Attempts END,
+            LastError    = CASE WHEN target.Status = 'Synced' THEN NULL ELSE target.LastError END,
+            ShipLoadDate = source.ShipLoadDate,
+            UpdatedAt    = GETDATE()
+        WHEN NOT MATCHED THEN INSERT (OrderType, OrderNbr, Status, ShipLoadDate)
+            VALUES (source.OrderType, source.OrderNbr, 'Pending', source.ShipLoadDate);
+    """, (order_type, order_nbr, ship_load_date))
+    get_db().commit()
+
+
+def _process_order_action(order_type, order_nbr, ship_load_date):
+    """Reopen (if needed), set UsrShipLoadDate, and re-complete a Sales Order."""
+    resp = _acumatica_rest("GET", f"/SalesOrder/{order_type}/{order_nbr}?$select=Status")
+    status = (resp.json().get("Status") or {}).get("value")
+
+    # If it's still Completed, reopen it first. Any other status (Open, Back Order, etc.)
+    # means a previous attempt already reopened it — skip straight to Update + Complete.
+    if status == "Completed":
+        _acumatica_rest("POST", "/SalesOrder/ReopenSalesOrder", json={
+            "entity": {"OrderType": {"value": order_type}, "OrderNbr": {"value": order_nbr}},
+            "parameters": {}
+        })
+
+    _acumatica_rest("PUT", "/SalesOrder", json={
+        "OrderType": {"value": order_type},
+        "OrderNbr":  {"value": order_nbr},
+        "custom": {"Document": {"UsrShipLoadDate": {
+            "type": "CustomDateTimeField",
+            "value": ship_load_date.isoformat()
+        }}}
+    })
+
+    _acumatica_rest("POST", "/SalesOrder/CompleteOrder", json={
+        "entity": {"OrderType": {"value": order_type}, "OrderNbr": {"value": order_nbr}},
+        "parameters": {}
+    })
+
+
+def _process_pending_actions():
+    """Push every order that reached 100% scanned to Acumatica (Reopen/Update/Complete)."""
+    cursor = db_execute(f"""
+        SELECT OrderType, OrderNbr, ShipLoadDate FROM {TABLE_ACTIONS}
+        WHERE Status IN ('Pending', 'Failed') AND Attempts < ?
+        ORDER BY UpdatedAt ASC
+    """, (ACTION_MAX_ATTEMPTS,))
+    pending = cursor.fetchall()
+    cursor.close()
+
+    for order_type, order_nbr, ship_load_date in pending:
+        db_execute(f"""
+            UPDATE {TABLE_ACTIONS} SET Status = 'Processing', UpdatedAt = GETDATE()
+            WHERE OrderType = ? AND OrderNbr = ?
+        """, (order_type, order_nbr))
+        get_db().commit()
+
+        try:
+            _process_order_action(order_type, order_nbr, ship_load_date)
+            db_execute(f"""
+                UPDATE {TABLE_ACTIONS}
+                SET Status = 'Synced', LastError = NULL, LastAttemptAt = GETDATE(), UpdatedAt = GETDATE()
+                WHERE OrderType = ? AND OrderNbr = ?
+            """, (order_type, order_nbr))
+        except Exception as exc:
+            print(f"[ACTION] {order_type}/{order_nbr} failed: {exc}")
+            db_execute(f"""
+                UPDATE {TABLE_ACTIONS}
+                SET Status = 'Failed', Attempts = Attempts + 1, LastError = ?,
+                    LastAttemptAt = GETDATE(), UpdatedAt = GETDATE()
+                WHERE OrderType = ? AND OrderNbr = ?
+            """, (str(exc)[:1000], order_type, order_nbr))
+        get_db().commit()
 
 
 # ---- API key guard ----
@@ -195,6 +368,25 @@ def require_api_key(f):
     def decorated(*args, **kwargs):
         if request.headers.get("X-API-Key") != API_KEY:
             return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ---- Company network guard (scanner actions only — /log stays open everywhere) ----
+_ALLOWED_NETWORKS = [ipaddress.ip_network(n) for n in ALLOWED_NETWORKS]
+
+
+def require_company_network(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        client_ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                     or request.remote_addr)
+        try:
+            ip = ipaddress.ip_address(client_ip)
+        except ValueError:
+            ip = None
+        if ip is None or not any(ip in net for net in _ALLOWED_NETWORKS):
+            return jsonify({"error": "Esta función solo está disponible conectado a la red WiFi de la empresa"}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -280,6 +472,7 @@ def serve_logo():
 # ---- API ----
 
 @app.route("/api/search")
+@require_company_network
 @require_api_key
 def api_search():
     """Search order and insert all items into log as Pending."""
@@ -405,25 +598,30 @@ def api_search():
 
 
 @app.route("/api/scan", methods=["POST"])
+@require_company_network
 @require_api_key
 def api_scan():
     """Update a Pending log row to Scanned."""
     data = request.json or {}
-    order_nbr = (data.get("OrderNbr") or "").strip()
-    scan_sku = (data.get("InventoryID") or "").strip()
-    scan_user = (data.get("ScanUser") or "").strip()
+    order_nbr  = (data.get("OrderNbr")  or "").strip()
+    order_type = (data.get("OrderType") or "").strip()
+    scan_sku   = (data.get("InventoryID") or "").strip()
+    scan_user  = (data.get("ScanUser") or "").strip()
 
-    if not order_nbr or not scan_sku:
+    if not order_nbr or not order_type or not scan_sku:
         return jsonify({"error": "Missing required fields"}), 400
+
+    now = datetime.now()
 
     # Find the first Pending row for this SKU in this order
     cursor = db_execute(f"""
         SELECT TOP 1 ScanID FROM {TABLE_SCANLOG}
         WHERE OrderNbr = ?
+          AND OrderType = ?
           AND InventoryID = ?
           AND ScanStatus = 'Pending'
         ORDER BY LineNbr, ScanID
-    """, (order_nbr, scan_sku))
+    """, (order_nbr, order_type, scan_sku))
 
     row = cursor.fetchone()
     cursor.close()
@@ -437,7 +635,7 @@ def api_scan():
     cursor = db_execute(f"""
         UPDATE l
         SET l.ScanStatus     = 'Scanned',
-            l.ScanDate       = GETDATE(),
+            l.ScanDate       = ?,
             l.ScanUser       = ?,
             l.ShipmentNbr_2  = COALESCE(l.ShipmentNbr_2, s.ShipmentNbr_2),
             l.InventoryID_2  = COALESCE(l.InventoryID_2,  s.InventoryID_2)
@@ -448,7 +646,7 @@ def api_scan():
             AND s.InventoryID = l.InventoryID
             AND s.LineNbr     = l.LineNbr
         WHERE l.ScanID = ?
-    """, (scan_user, scan_id))
+    """, (now, scan_user, scan_id))
     cursor.close()
     get_db().commit()
 
@@ -458,13 +656,16 @@ def api_scan():
             COUNT(*) AS total,
             SUM(CASE WHEN ScanStatus = 'Scanned' THEN 1 ELSE 0 END) AS done
         FROM {TABLE_SCANLOG}
-        WHERE OrderNbr = ?
-    """, (order_nbr,))
+        WHERE OrderNbr = ? AND OrderType = ?
+    """, (order_nbr, order_type))
 
     totals = cursor.fetchone()
     cursor.close()
     total = totals[0] or 0
     done  = totals[1] or 0
+
+    if total > 0 and done >= total:
+        _enqueue_order_action(order_type, order_nbr, now)
 
     return jsonify({
         "success": True,
@@ -476,14 +677,16 @@ def api_scan():
 
 
 @app.route("/api/unscan", methods=["POST"])
+@require_company_network
 @require_api_key
 def api_unscan():
     """Revert a Scanned log row back to Pending."""
-    data      = request.json or {}
-    scan_id   = data.get("ScanID")
-    order_nbr = (data.get("OrderNbr") or "").strip()
+    data       = request.json or {}
+    scan_id    = data.get("ScanID")
+    order_nbr  = (data.get("OrderNbr")  or "").strip()
+    order_type = (data.get("OrderType") or "").strip()
 
-    if not scan_id or not order_nbr:
+    if not scan_id or not order_nbr or not order_type:
         return jsonify({"error": "Missing fields"}), 400
 
     cursor = db_execute(f"""
@@ -503,8 +706,8 @@ def api_unscan():
             COUNT(*) AS total,
             SUM(CASE WHEN ScanStatus = 'Scanned' THEN 1 ELSE 0 END) AS done
         FROM {TABLE_SCANLOG}
-        WHERE OrderNbr = ?
-    """, (order_nbr,))
+        WHERE OrderNbr = ? AND OrderType = ?
+    """, (order_nbr, order_type))
     totals = cursor.fetchone()
     cursor.close()
 
@@ -649,7 +852,7 @@ def api_sync_manual():
     count = sync_from_acumatica()
     if count is None:
         return jsonify({"error": "Sync failed — check server logs"}), 500
-    export_to_excel()
+    _process_pending_actions()
     return jsonify({"success": True, "synced": count})
 
 
