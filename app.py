@@ -758,8 +758,7 @@ def api_search():
         """, (q,))
         dropped = cursor.fetchone() is not None
         cursor.close()
-        msg = (f"Order {q} is no longer available — its status changed in Acumatica"
-               if dropped else f"Order not found: {q}")
+        msg = "Order not available" if dropped else f"Order not found: {q}"
         return jsonify({"query": q, "total": 0, "done": 0, "items": [],
                         "in_feed": not dropped, "message": msg})
 
@@ -895,8 +894,7 @@ def api_scan():
     live, known = cursor.fetchone()
     cursor.close()
     if known and not (live or 0):
-        return jsonify({"error": f"Order {order_nbr} is no longer available — "
-                                 f"its status changed in Acumatica"}), 409
+        return jsonify({"error": "Order not available"}), 409
 
     # Find the first Pending row for this SKU in this order
     cursor = db_execute(f"""
