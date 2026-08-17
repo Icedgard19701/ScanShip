@@ -11,15 +11,17 @@ import functools
 import time
 import logging
 import ipaddress
+import json
+import os
 import requests as http_requests
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from config import (
     SQL_CONN_STR, TABLE_SHIPMENTS, TABLE_SCANLOG, TABLE_ACTIONS,
-    FLASK_HOST, FLASK_PORT, API_KEY, ALLOWED_NETWORKS,
+    FLASK_HOST, FLASK_PORT, API_KEY, ALLOWED_NETWORKS, RESTRICT_TO_COMPANY_NETWORK,
     ODATA_URL, ODATA_USER, ODATA_PASS, SYNC_INTERVAL_MINUTES,
     ODATA_TOKEN_URL, ODATA_REVOKE_URL, ODATA_CLIENT_ID, ODATA_CLIENT_SECRET,
-    REST_BASE_URL, ACTION_MAX_ATTEMPTS
+    REST_BASE_URL, ACUMATICA_BASE_URL, ACTION_MAX_ATTEMPTS
 )
 
 _MIAMI = ZoneInfo("America/New_York")
@@ -111,6 +113,164 @@ def _revoke_access_token():
     _token_cache["expires_at"]    = 0
 
 
+# ---- Purge shipments Acumatica replaced (phantoms) ----
+# When a shipment is cancelled/recreated in Acumatica it gets a new ShipmentNbr; the old
+# one stops coming in the feed but lingers locally (the sync only upserts, never deletes),
+# so the scanner would show the phantom's items too. This removes those phantoms.
+PURGE_REPLACED_SHIPMENTS = True
+_PURGE_BACKUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "purge_backup.jsonl")
+
+
+def _purge_replaced_shipments(conn, records):
+    """Delete local shipments that are gone from the feed but whose order IS still in the
+    feed (i.e. a replacement exists). Scans are first remapped to the current shipment.
+    Every deleted row is backed up to logs/purge_backup.jsonl for reversibility.
+    Safe against transient feed blips: only fires when the order still has a current
+    shipment in the feed, so a single-shipment order that momentarily drops out is skipped.
+    """
+    feed_ships = set()
+    feed_by_order = {}
+    for rec in records:
+        on = rec.get("OrderNbr"); sn = rec.get("ShipmentNbr")
+        feed_ships.add(sn)
+        feed_by_order.setdefault(on, set()).add(sn)
+
+    cur = conn.cursor()
+    cur.execute(f"SELECT DISTINCT OrderNbr, ShipmentNbr FROM {TABLE_SHIPMENTS}")
+    phantoms = {}   # OrderNbr -> [phantom ShipmentNbr]
+    for on, sn in cur.fetchall():
+        if on in feed_by_order and sn not in feed_ships:
+            phantoms.setdefault(on, []).append(sn)
+    if not phantoms:
+        cur.close()
+        return
+
+    # Pass 1 — back up every row we are about to delete, BEFORE touching anything.
+    backup_lines = []
+    for on, olds in phantoms.items():
+        ph = ",".join("?" * len(olds))
+        for table in (TABLE_SCANLOG, TABLE_SHIPMENTS):
+            cur.execute(f"SELECT * FROM {table} WHERE OrderNbr=? AND ShipmentNbr IN ({ph})", (on, *olds))
+            cols = [d[0] for d in cur.description]
+            for row in cur.fetchall():
+                backup_lines.append(json.dumps(
+                    {"table": table, "order": on, "row": {c: str(v) for c, v in zip(cols, row)}},
+                    ensure_ascii=False))
+    if backup_lines:
+        try:
+            with open(_PURGE_BACKUP_FILE, "a", encoding="utf-8") as f:
+                f.write("\n".join(backup_lines) + "\n")
+        except Exception as exc:
+            print(f"[PURGE] backup write failed, aborting purge: {exc}")
+            cur.close()
+            return
+
+    # Pass 2 — remap scans to the current shipment, then delete the phantom rows.
+    now = datetime.now()
+    tot_remap = tot_log = tot_ship = 0
+    for on, olds in phantoms.items():
+        currents = sorted(feed_by_order[on])          # >= 1 (order is in the feed)
+        cur_ph = ",".join("?" * len(currents))
+        old_ph = ",".join("?" * len(olds))
+
+        # scanned units per item across ALL shipments of the order (before changes)
+        cur.execute(f"""SELECT InventoryID, SUM(CASE WHEN ScanStatus='Scanned' THEN 1 ELSE 0 END)
+                        FROM {TABLE_SCANLOG} WHERE OrderNbr=? GROUP BY InventoryID""", (on,))
+        scanned_all = {inv: (n or 0) for inv, n in cur.fetchall()}
+
+        # bring the current shipment's scanned count up to what was physically scanned
+        cur.execute(f"""SELECT InventoryID, COUNT(*),
+                               SUM(CASE WHEN ScanStatus='Scanned' THEN 1 ELSE 0 END)
+                        FROM {TABLE_SCANLOG}
+                        WHERE OrderNbr=? AND ShipmentNbr IN ({cur_ph})
+                        GROUP BY InventoryID""", (on, *currents))
+        order_remap = 0
+        for inv, units, scanned in cur.fetchall():
+            promote = min(units, scanned_all.get(inv, 0)) - (scanned or 0)
+            if promote > 0:
+                cur.execute(f"""UPDATE TOP (?) {TABLE_SCANLOG}
+                                SET ScanStatus='Scanned', ScanDate=?, ScanUser='remap'
+                                WHERE OrderNbr=? AND ShipmentNbr IN ({cur_ph})
+                                  AND InventoryID=? AND ScanStatus='Pending'""",
+                            (promote, now, on, *currents, inv))
+                order_remap += promote
+
+        cur.execute(f"DELETE FROM {TABLE_SCANLOG} WHERE OrderNbr=? AND ShipmentNbr IN ({old_ph})", (on, *olds))
+        d_log = cur.rowcount
+        cur.execute(f"DELETE FROM {TABLE_SHIPMENTS} WHERE OrderNbr=? AND ShipmentNbr IN ({old_ph})", (on, *olds))
+        d_ship = cur.rowcount
+        tot_remap += order_remap; tot_log += d_log; tot_ship += d_ship
+        print(f"[PURGE] {on}: {olds} -> {currents} | remap {order_remap} | del {d_log} log, {d_ship} ship")
+
+    conn.commit()
+    cur.close()
+    print(f"[PURGE] {now.strftime('%H:%M:%S')} — {len(phantoms)} orders, "
+          f"remap {tot_remap}, deleted {tot_log} log + {tot_ship} ship")
+
+
+# ---- Reconcile rows that left the Acumatica feed ----
+# The OData view only exposes orders in Open / Confirmed / Invoiced. When an order moves
+# to any other status (On Hold, Cancelled, …) it silently disappears from the feed, and
+# the upsert-only MERGE above would otherwise leave the local rows alive forever with a
+# stale Status. This flips InFeed to 0 on every row the current feed did not carry.
+# Nothing is deleted — scan history stays intact — and a row that comes back in a later
+# feed is flipped to InFeed = 1 again by the MERGE.
+RECONCILE_FEED = True
+
+# If the feed returns less than this fraction of the rows currently marked live, treat it
+# as a truncated/partial feed (permissions, view edited, OData paging cut short) and skip
+# the reconcile entirely rather than flag thousands of good rows as gone.
+FEED_SHRINK_GUARD = 0.5
+
+
+def _reconcile_feed(conn, sync_stamp, feed_count):
+    """Mark local rows absent from this sync's feed as InFeed = 0. Returns rows flagged."""
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM {TABLE_SHIPMENTS} WHERE InFeed = 1")
+    live_before = cur.fetchone()[0] or 0
+
+    if live_before and feed_count < live_before * FEED_SHRINK_GUARD:
+        print(f"[RECONCILE] SKIP — feed returned {feed_count} rows vs {live_before} live "
+              f"locally (< {FEED_SHRINK_GUARD:.0%}). Feed looks partial.")
+        cur.close()
+        return 0
+
+    cur.execute(f"""
+        UPDATE {TABLE_SHIPMENTS}
+        SET InFeed = 0
+        WHERE InFeed = 1
+          AND (LastSeenUTC IS NULL OR LastSeenUTC < ?)
+    """, (sync_stamp,))
+    dropped = cur.rowcount or 0
+
+    # Sanity net: the feed just carried feed_count rows, so they must all still be live.
+    # If nothing survived, the stamp comparison itself is broken (precision mismatch,
+    # driver truncation) — undo rather than leave the whole scanner blank.
+    cur.execute(f"SELECT COUNT(*) FROM {TABLE_SHIPMENTS} WHERE InFeed = 1")
+    live_after = cur.fetchone()[0] or 0
+    if feed_count and live_after == 0:
+        conn.rollback()
+        cur.close()
+        print(f"[RECONCILE] ABORTED — flagged all {dropped} rows while the feed carried "
+              f"{feed_count}. Stamp comparison is broken; no changes committed.")
+        return 0
+
+    if dropped:
+        # Name the orders that just left, so the drop shows up in the server log
+        # instead of being a silent state change.
+        cur.execute(f"""
+            SELECT DISTINCT OrderNbr FROM {TABLE_SHIPMENTS}
+            WHERE InFeed = 0 AND LastSeenUTC IS NOT NULL AND LastSeenUTC < ?
+              AND LastSeenUTC >= DATEADD(MINUTE, ?, ?)
+        """, (sync_stamp, -(SYNC_INTERVAL_MINUTES * 3), sync_stamp))
+        orders = sorted(r[0] for r in cur.fetchall())
+        print(f"[RECONCILE] {dropped} rows left the feed | orders: {orders}")
+
+    conn.commit()
+    cur.close()
+    return dropped
+
+
 def sync_from_acumatica():
     """
     Pull all records from the Acumatica OData endpoint and upsert into AcuSoShipScan.
@@ -151,6 +311,22 @@ def sync_from_acumatica():
 
         conn = None
         try:
+            conn   = pyodbc.connect(SQL_CONN_STR)
+            cursor = conn.cursor()
+
+            # Stamp taken from SQL Server (not the app server) so LastSeenUTC and the
+            # reconcile comparison below can never disagree because of clock skew.
+            # Every row this feed carries gets this exact value; anything left with an
+            # older stamp is provably absent from the feed.
+            #
+            # Truncated to whole seconds on purpose: pyodbc drops sub-second precision
+            # when binding a datetime parameter, so the value that lands in LastSeenUTC
+            # would be SMALLER than the stamp we compare against in _reconcile_feed and
+            # every row the feed just carried would be flagged as gone. Storing and
+            # comparing the same second-precision value keeps the two exactly equal.
+            cursor.execute("SELECT SYSUTCDATETIME()")
+            sync_stamp = cursor.fetchone()[0].replace(microsecond=0)
+
             # Normalize all dates and build params list before touching the DB
             params_list = []
             for rec in records:
@@ -170,20 +346,18 @@ def sync_from_acumatica():
                     ship_date,               rec.get("OrderType"),
                     rec.get("AccountID"),    rec.get("WarehouseID"),
                     rec.get("CustomerID"),   rec.get("ShipmentNbr_2"),
-                    rec.get("InventoryID_2"),
+                    rec.get("InventoryID_2"), sync_stamp,
                 ))
 
-            conn   = pyodbc.connect(SQL_CONN_STR)
-            cursor = conn.cursor()
             cursor.fast_executemany = True   # bulk-sends all rows in one network trip
 
             cursor.executemany(f"""
                 MERGE {TABLE_SHIPMENTS} AS target
-                USING (VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?)) AS source
+                USING (VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?, ?)) AS source
                     (ShipmentNbr, OrderNbr, InventoryID, LineNbr, ShippedQty,
                      Status, ShipmentDate, OrderType,
                      AccountID, WarehouseID, CustomerID,
-                     ShipmentNbr_2, InventoryID_2)
+                     ShipmentNbr_2, InventoryID_2, LastSeenUTC)
                 ON  target.ShipmentNbr = source.ShipmentNbr
                 AND target.OrderNbr    = source.OrderNbr
                 AND target.InventoryID = source.InventoryID
@@ -197,18 +371,21 @@ def sync_from_acumatica():
                     WarehouseID   = source.WarehouseID,
                     CustomerID    = source.CustomerID,
                     ShipmentNbr_2 = COALESCE(source.ShipmentNbr_2, target.ShipmentNbr_2),
-                    InventoryID_2 = COALESCE(source.InventoryID_2, target.InventoryID_2)
+                    InventoryID_2 = COALESCE(source.InventoryID_2, target.InventoryID_2),
+                    LastSeenUTC   = source.LastSeenUTC,
+                    InFeed        = 1
                 WHEN NOT MATCHED THEN INSERT
                     (ShipmentNbr, OrderNbr, InventoryID, LineNbr, ShippedQty,
                      Status, ShipmentDate, OrderType,
                      AccountID, WarehouseID, CustomerID,
-                     ShipmentNbr_2, InventoryID_2)
+                     ShipmentNbr_2, InventoryID_2, LastSeenUTC, InFeed)
                 VALUES
                     (source.ShipmentNbr, source.OrderNbr, source.InventoryID,
                      source.LineNbr, source.ShippedQty,
                      source.Status, source.ShipmentDate, source.OrderType,
                      source.AccountID, source.WarehouseID, source.CustomerID,
-                     source.ShipmentNbr_2, source.InventoryID_2);
+                     source.ShipmentNbr_2, source.InventoryID_2,
+                     source.LastSeenUTC, 1);
             """, params_list)
 
             conn.commit()
@@ -236,6 +413,23 @@ def sync_from_acumatica():
             """)
             fix_cursor.close()
             conn.commit()
+
+            # Remove shipments Acumatica replaced (phantoms) so the scanner only ever
+            # sees the current shipment. Failure here must not break the sync.
+            if PURGE_REPLACED_SHIPMENTS:
+                try:
+                    _purge_replaced_shipments(conn, records)
+                except Exception as exc:
+                    print(f"[PURGE] error (sync continues): {exc}")
+
+            # Flag whatever the feed no longer carries (order left Open/Confirmed/Invoiced).
+            # Runs after the purge so rows about to be deleted aren't flagged first.
+            if RECONCILE_FEED:
+                try:
+                    _reconcile_feed(conn, sync_stamp, len(records))
+                except Exception as exc:
+                    print(f"[RECONCILE] error (sync continues): {exc}")
+
             conn.close()
 
             _last_sync_time  = datetime.now()
@@ -267,17 +461,56 @@ def _sync_loop():
 
 # ---- Order actions (ReopenOrder / UsrShipLoadDate / CompleteOrder) ----
 
+# Persistent HTTP session for the contract API. Reusing one session keeps the
+# Acumatica login cookie alive so ALL calls share a single server-side session
+# (one license seat) instead of opening — and leaking — a new one per request.
+_rest_session      = None
+_rest_session_lock = threading.Lock()
+
+
+def _get_rest_session():
+    global _rest_session
+    with _rest_session_lock:
+        if _rest_session is None:
+            _rest_session = http_requests.Session()
+        return _rest_session
+
+
 def _acumatica_rest(method, path, **kwargs):
-    """Call Acumatica's contract-based REST API using the shared OAuth token."""
+    """Call Acumatica's contract-based REST API over the shared, cookie-persistent session."""
+    session = _get_rest_session()
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {_get_access_token()}",
     }
-    resp = http_requests.request(method, f"{REST_BASE_URL}{path}", headers=headers, timeout=60, **kwargs)
+    resp = session.request(method, f"{REST_BASE_URL}{path}", headers=headers, timeout=60, **kwargs)
     if not resp.ok:
         raise RuntimeError(f"{method} {path} -> {resp.status_code}: {resp.text[:500]}")
     return resp
+
+
+def _logout_rest():
+    """
+    Explicitly close the Acumatica contract-API session (frees the license seat).
+    Revoking the OAuth token does NOT end this session — logout must be called.
+    Intended for one-off scripts; the long-running server keeps its session for reuse.
+    """
+    global _rest_session
+    with _rest_session_lock:
+        session = _rest_session
+        _rest_session = None
+    if session is None:
+        return
+    try:
+        session.post(f"{ACUMATICA_BASE_URL}/entity/auth/logout", timeout=15)
+    except Exception as exc:
+        print(f"[REST] logout failed: {exc}")
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
 
 
 def _enqueue_order_action(order_type, order_nbr, ship_load_date):
@@ -338,6 +571,22 @@ def _process_pending_actions():
     cursor.close()
 
     for order_type, order_nbr, ship_load_date in pending:
+        # Order no longer in the Acumatica view (On Hold, Cancelled, …): pushing
+        # Reopen/Complete would just fail. Leave it Pending without burning an attempt —
+        # it retries by itself next cycle if the order returns to the view.
+        cursor = db_execute(f"""
+            SELECT
+                SUM(CASE WHEN InFeed = 1 THEN 1 ELSE 0 END),
+                COUNT(*)
+            FROM {TABLE_SHIPMENTS} WITH (NOLOCK)
+            WHERE OrderNbr = ?
+        """, (order_nbr,))
+        live, known = cursor.fetchone()
+        cursor.close()
+        if known and not (live or 0):
+            print(f"[ACTION] {order_type}\\{order_nbr} deferred — order not in Acumatica feed")
+            continue
+
         db_execute(f"""
             UPDATE {TABLE_ACTIONS} SET Status = 'Processing', UpdatedAt = GETDATE()
             WHERE OrderType = ? AND OrderNbr = ?
@@ -379,6 +628,9 @@ _ALLOWED_NETWORKS = [ipaddress.ip_network(n) for n in ALLOWED_NETWORKS]
 def require_company_network(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
+        # Feature-flag: si está desactivado, no se restringe por red (ver config.py).
+        if not RESTRICT_TO_COMPANY_NETWORK:
+            return f(*args, **kwargs)
         client_ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
                      or request.remote_addr)
         try:
@@ -481,17 +733,30 @@ def api_search():
         return jsonify({"error": "Parameter 'q' required"}), 400
 
     # 1. Get items from Acumatica table — search by OrderNbr only
+    # InFeed = 1 keeps orders that left the Acumatica view (On Hold, Cancelled, …)
+    # out of the scanner even though their rows are still stored locally.
     # NOLOCK avoids waiting for the background sync MERGE lock
     cursor = db_execute(f"""
         SELECT * FROM {TABLE_SHIPMENTS} WITH (NOLOCK)
-        WHERE OrderNbr = ?
+        WHERE OrderNbr = ? AND InFeed = 1
         ORDER BY LineNbr
     """, (q,))
     acumatica_items = rows_to_dicts(cursor)
     cursor.close()
 
     if not acumatica_items:
-        return jsonify({"query": q, "total": 0, "done": 0, "items": []})
+        # Distinguish "never existed" from "was pulled out of the Acumatica view",
+        # otherwise the operator just sees a confusing 'not found'.
+        cursor = db_execute(f"""
+            SELECT TOP 1 1 FROM {TABLE_SHIPMENTS} WITH (NOLOCK)
+            WHERE OrderNbr = ? AND InFeed = 0
+        """, (q,))
+        dropped = cursor.fetchone() is not None
+        cursor.close()
+        msg = (f"Order {q} is no longer available — its status changed in Acumatica"
+               if dropped else f"Order not found: {q}")
+        return jsonify({"query": q, "total": 0, "done": 0, "items": [],
+                        "in_feed": not dropped, "message": msg})
 
     # 2. Get all existing counts for this order in ONE query
     cursor = db_execute(f"""
@@ -613,6 +878,21 @@ def api_scan():
 
     now = datetime.now()
 
+    # Block scans on an order that left the Acumatica view mid-session (e.g. put On Hold
+    # between the search and this scan) — the order is no longer shippable.
+    cursor = db_execute(f"""
+        SELECT
+            SUM(CASE WHEN InFeed = 1 THEN 1 ELSE 0 END),
+            COUNT(*)
+        FROM {TABLE_SHIPMENTS} WITH (NOLOCK)
+        WHERE OrderNbr = ?
+    """, (order_nbr,))
+    live, known = cursor.fetchone()
+    cursor.close()
+    if known and not (live or 0):
+        return jsonify({"error": f"Order {order_nbr} is no longer available — "
+                                 f"its status changed in Acumatica"}), 409
+
     # Find the first Pending row for this SKU in this order
     cursor = db_execute(f"""
         SELECT TOP 1 ScanID FROM {TABLE_SCANLOG}
@@ -715,6 +995,70 @@ def api_unscan():
         "success": True,
         "total": totals[0] or 0,
         "done":  totals[1] or 0
+    })
+
+
+@app.route("/api/complete-order", methods=["POST"])
+@require_company_network
+@require_api_key
+def api_complete_order():
+    """Bulk-fill every remaining Pending log row for an order as Scanned."""
+    data       = request.json or {}
+    order_nbr  = (data.get("OrderNbr")  or "").strip()
+    order_type = (data.get("OrderType") or "").strip()
+
+    if not order_nbr or not order_type:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    now = datetime.now()
+
+    # Mark all Pending rows for this order as Scanned in one pass.
+    # 'bulk' sentinel in ScanUser keeps these distinguishable from real scans
+    # in the Scan Log (same idea as the 'remap' sentinel in _purge_replaced_shipments).
+    cursor = db_execute(f"""
+        UPDATE l
+        SET l.ScanStatus     = 'Scanned',
+            l.ScanDate       = ?,
+            l.ScanUser       = 'bulk',
+            l.ShipmentNbr_2  = COALESCE(l.ShipmentNbr_2, s.ShipmentNbr_2),
+            l.InventoryID_2  = COALESCE(l.InventoryID_2,  s.InventoryID_2)
+        FROM {TABLE_SCANLOG} l
+        JOIN {TABLE_SHIPMENTS} s
+            ON  s.ShipmentNbr = l.ShipmentNbr
+            AND s.OrderNbr    = l.OrderNbr
+            AND s.InventoryID = l.InventoryID
+            AND s.LineNbr     = l.LineNbr
+        WHERE l.OrderNbr   = ?
+          AND l.OrderType  = ?
+          AND l.ScanStatus = 'Pending'
+    """, (now, order_nbr, order_type))
+    filled = cursor.rowcount
+    cursor.close()
+    get_db().commit()
+
+    # Recalculate totals for this order
+    cursor = db_execute(f"""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN ScanStatus = 'Scanned' THEN 1 ELSE 0 END) AS done
+        FROM {TABLE_SCANLOG}
+        WHERE OrderNbr = ? AND OrderType = ?
+    """, (order_nbr, order_type))
+
+    totals = cursor.fetchone()
+    cursor.close()
+    total = totals[0] or 0
+    done  = totals[1] or 0
+
+    if total > 0 and done >= total:
+        _enqueue_order_action(order_type, order_nbr, now)
+
+    return jsonify({
+        "success":   True,
+        "filled":    filled if filled and filled > 0 else 0,
+        "total":     total,
+        "done":      done,
+        "completed": total > 0 and done >= total
     })
 
 

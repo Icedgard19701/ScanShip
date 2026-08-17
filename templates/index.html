@@ -293,11 +293,35 @@
             letter-spacing: 0.8px;
             color: var(--gray-700);
         }
+        .items-header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .items-counter {
             font-size: 11px;
             font-weight: 600;
             color: var(--gray-500);
         }
+        .btn-complete {
+            display: none;
+            height: 28px;
+            padding: 0 12px;
+            border: none;
+            border-radius: 8px;
+            background: var(--navy);
+            color: var(--white);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-complete.show    { display: inline-flex; align-items: center; }
+        .btn-complete:active  { background: var(--navy-dark); }
+        .btn-complete:disabled{ opacity: 0.5; }
         /* Items list — only scrollable region on the page */
         .items-list {
             flex: 1;
@@ -439,6 +463,67 @@
             letter-spacing: 0.5px;
         }
 
+        /* ---- CONFIRM POPUP ---- */
+        .confirm-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 600;
+            background: rgba(0,0,0,0.45);
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .confirm-backdrop.show { display: flex; }
+        .confirm-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 20px;
+            width: min(88%, 340px);
+            text-align: left;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.24);
+        }
+        .confirm-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 8px;
+        }
+        .confirm-text {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--gray-700);
+            line-height: 1.45;
+            margin-bottom: 20px;
+        }
+        .confirm-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .confirm-actions button {
+            flex: 1;
+            height: 44px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-cancel {
+            background: var(--white);
+            border: 1.5px solid var(--gray-200);
+            color: var(--gray-700);
+        }
+        .btn-cancel:active { border-color: var(--navy); color: var(--navy); }
+        .btn-confirm {
+            background: var(--navy);
+            border: none;
+            color: var(--white);
+        }
+        .btn-confirm:active   { background: var(--navy-dark); }
+        .btn-confirm:disabled { opacity: 0.5; }
+
         /* ---- TOAST ---- */
         .toast {
             position: fixed;
@@ -484,7 +569,7 @@
         /* Tablets & desktop (≥ 768px) — centered card, no body scroll */
         @media (min-width: 768px) {
             body {
-                background: var(--gray-100);
+                background: var(--white);
                 /* Remove safe-area padding — frame is centered, not edge-to-edge */
                 padding: 0;
                 align-items: center;
@@ -602,7 +687,11 @@
 
             <div class="items-header">
                 <div class="items-label">Items</div>
-                <div class="items-counter" id="itemsCounter">0/0 Done</div>
+                <div class="items-header-right">
+                    <div class="items-counter" id="itemsCounter">0/0 Done</div>
+                    <button type="button" class="btn-complete" id="btnComplete"
+                            onclick="openCompleteConfirm()">Complete</button>
+                </div>
             </div>
 
             <div class="items-list" id="itemsList"></div>
@@ -625,6 +714,19 @@
     </div>
 
 </div><!-- /app-frame -->
+
+<!-- Complete Order confirmation — full-viewport backdrop, outside the frame -->
+<div class="confirm-backdrop" id="confirmBackdrop">
+    <div class="confirm-card">
+        <div class="confirm-title">Complete Order</div>
+        <div class="confirm-text" id="confirmText"></div>
+        <div class="confirm-actions">
+            <button type="button" class="btn-cancel" onclick="closeCompleteConfirm()">Cancel</button>
+            <button type="button" class="btn-confirm" id="btnConfirmComplete"
+                    onclick="confirmCompleteOrder()">Confirm</button>
+        </div>
+    </div>
+</div>
 
 <div id="toast" class="toast"></div>
 
@@ -675,6 +777,7 @@
                   + '</div>';
         }
         document.getElementById('itemsList').innerHTML = html;
+        setCompleteButton(0);
         document.getElementById('itemScanInput').value = '';
     }
 
@@ -704,7 +807,7 @@
             }
 
             if (!data.items || data.total === 0) {
-                showToast('Order not found: ' + q, 'error');
+                showToast(data.message || ('Order not found: ' + q), 'error');
                 if (!isRefresh) resetToEmpty();
                 return;
             }
@@ -752,8 +855,72 @@
         });
 
         document.getElementById('itemsList').innerHTML = html;
+        setCompleteButton(data.total - data.done);
         document.getElementById('itemScanInput').value = '';
         document.getElementById('itemScanInput').focus();
+    }
+
+    // ---- Complete Order (bulk fill) ----
+    function setCompleteButton(remaining) {
+        var btn = document.getElementById('btnComplete');
+        btn.dataset.remaining = remaining;
+        btn.classList.toggle('show', remaining > 0);
+    }
+
+    function openCompleteConfirm() {
+        var remaining = parseInt(document.getElementById('btnComplete').dataset.remaining) || 0;
+        if (remaining <= 0) return;
+        document.getElementById('confirmText').textContent =
+            'Mark all ' + remaining + ' remaining item' + (remaining === 1 ? '' : 's') + ' as scanned?';
+        document.getElementById('confirmBackdrop').classList.add('show');
+        // Hide keyboard while the popup is visible
+        document.activeElement && document.activeElement.blur();
+    }
+
+    function closeCompleteConfirm() {
+        document.getElementById('confirmBackdrop').classList.remove('show');
+        document.getElementById('itemScanInput').focus();
+    }
+
+    document.getElementById('confirmBackdrop').addEventListener('click', function(e) {
+        if (e.target === this) closeCompleteConfirm();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' &&
+            document.getElementById('confirmBackdrop').classList.contains('show')) {
+            closeCompleteConfirm();
+        }
+    });
+
+    async function confirmCompleteOrder() {
+        var btn = document.getElementById('btnConfirmComplete');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+            var res = await apiFetch('/api/complete-order', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ OrderNbr: currentOrder, OrderType: currentOrderType })
+            });
+            var data = {};
+            try { data = await res.json(); } catch (_) {}
+
+            closeCompleteConfirm();
+
+            if (res.ok) {
+                showToast(data.filled + ' item' + (data.filled === 1 ? '' : 's') + ' completed', 'success');
+                if (data.completed) { showCompleted(); return; }
+                await searchOrder(currentOrder, true);
+            } else {
+                showToast(data.error || 'Complete failed', 'error');
+            }
+        } catch (err) {
+            closeCompleteConfirm();
+            showToast('Connection error', 'error');
+        } finally {
+            btn.disabled = false;
+        }
     }
 
     // ---- Item Scanning (barcode / Enter key) ----
@@ -859,6 +1026,8 @@
 
     function resetToEmpty() {
         currentOrder = '';
+        document.getElementById('confirmBackdrop').classList.remove('show');
+        setCompleteButton(0);
         document.getElementById('emptyState').style.display = '';
         document.getElementById('orderSection').classList.remove('active');
         document.getElementById('searchInput').value = '';

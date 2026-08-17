@@ -235,6 +235,9 @@
             min-width: 640px;
             border-collapse: collapse;
             font-size: 12px;
+            /* Fixed layout — column widths come from <colgroup>, never from cell
+               content, so they stay put across searches, sorts and pages. */
+            table-layout: fixed;
         }
 
         thead {
@@ -245,7 +248,7 @@
         thead tr { background: var(--navy); }
         thead th {
             padding: 10px 12px;
-            text-align: left;
+            text-align: center;
             font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
@@ -268,7 +271,12 @@
             color: var(--gray-900);
             white-space: nowrap;
             vertical-align: middle;
+            /* table-layout:fixed can't grow a column — clip instead of overflowing */
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+        /* The empty-state / error row spans all columns and must not be clipped */
+        tbody td[colspan] { overflow: visible; text-align: center; }
         tbody td.dim { color: var(--gray-500); }
 
         .badge {
@@ -398,7 +406,7 @@
         /* Tablets & desktop — centered card, no scroll anywhere */
         @media (min-width: 768px) {
             body {
-                background: var(--gray-100);
+                background: var(--white);
                 padding: 0;
                 align-items: center;
                 justify-content: center;
@@ -483,6 +491,16 @@
 
         <div class="table-wrap">
             <table id="logTable">
+                <!-- Fixed column proportions — keep in sync with COLS order -->
+                <colgroup>
+                    <col style="width: 11%">   <!-- Status        -->
+                    <col style="width: 17%">   <!-- Scan Date     -->
+                    <col style="width: 14%">   <!-- Order Nbr.    -->
+                    <col style="width: 15%">   <!-- Shipment Nbr. -->
+                    <col style="width: 12%">   <!-- Ship. Date    -->
+                    <col style="width: 18%">   <!-- Item / SKU    -->
+                    <col style="width: 13%">   <!-- Acu. Status   -->
+                </colgroup>
                 <thead>
                     <tr>
                         <th data-col="ScanStatus"   class="sort-desc">Status <span class="sort-arrow">&#9660;</span></th>
@@ -724,7 +742,8 @@
                 } else if (val === null || val === undefined || val === '') {
                     html += '<td class="dim">—</td>';
                 } else {
-                    html += '<td>' + esc(String(val)) + '</td>';
+                    // title = full value, readable on hover when the cell is ellipsised
+                    html += '<td title="' + esc(String(val)) + '">' + esc(String(val)) + '</td>';
                 }
             });
             html += '</tr>';
