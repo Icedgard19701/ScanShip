@@ -1,6 +1,9 @@
 # --- Credentials & local config (NEVER commit) ---
 config.py
 
+# Holds absolute paths to the deployment machine. Use web.config.example instead.
+web.config
+
 # --- Python ---
 .venv/
 __pycache__/

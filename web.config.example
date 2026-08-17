@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Template for web.config (IIS + HttpPlatformHandler).
+
+  web.config is gitignored because it holds absolute paths to the deployment
+  machine. Copy this file to web.config and replace the placeholders:
+
+      copy web.config.example web.config
+
+  Requires the HttpPlatformHandler module installed in IIS.
+-->
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="PythonHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified"/>
+    </handlers>
+    <!-- processPath: full path to the Python interpreter of the virtualenv.
+         arguments:   full path to run_server.py in the deployment folder. -->
+    <httpPlatform processPath="C:\PATH\TO\python.exe"
+                  arguments="C:\PATH\TO\ScanShip\run_server.py"
+                  stdoutLogEnabled="true"
+                  stdoutLogFile="C:\PATH\TO\ScanShip\logs\app.log"
+                  startupTimeLimit="60"
+                  processesPerApplication="1">
+      <environmentVariables>
+        <!-- IIS assigns the port the app must listen on; run_server.py reads it. -->
+        <environmentVariable name="HTTP_PLATFORM_PORT" value="%HTTP_PLATFORM_PORT%" />
+        <environmentVariable name="PYTHONPATH" value="C:\PATH\TO\ScanShip\.venv\Lib\site-packages;C:\PATH\TO\ScanShip" />
+        <!-- Without this, stdout stays buffered and the [SYNC] / [PURGE] / [RECONCILE]
+             prints never reach stdoutLogFile until the process dies. -->
+        <environmentVariable name="PYTHONUNBUFFERED" value="1" />
+      </environmentVariables>
+    </httpPlatform>
+  </system.webServer>
+</configuration>
