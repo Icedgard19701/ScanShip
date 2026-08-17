@@ -535,7 +535,8 @@
 
 <script>
     // ---- Config ----
-    var API_KEY = 'SWCORP-SCAN-2026';
+    // Injected from config.py, which is gitignored — never hardcode the key here.
+    var API_KEY = '{{ api_key }}';
 
     // ---- API helper ----
     var BASE_URL = '{{ base_url }}';

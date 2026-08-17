@@ -700,7 +700,12 @@ def rows_to_dicts(cursor):
 
 @app.context_processor
 def inject_base_url():
-    return {'base_url': app.config.get('APPLICATION_ROOT', '').rstrip('/')}
+    # api_key is rendered into the page instead of being hardcoded in the templates:
+    # config.py is gitignored, the templates are not, and this repo is public.
+    return {
+        'base_url': app.config.get('APPLICATION_ROOT', '').rstrip('/'),
+        'api_key':  API_KEY,
+    }
 
 
 @app.route("/")
