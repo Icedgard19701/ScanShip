@@ -408,22 +408,8 @@
         @media (min-width: 768px) {
             body {
                 background: var(--white);
-                padding: 0;
                 align-items: center;
                 justify-content: center;
-            }
-            .app-frame {
-                width: clamp(700px, 85vw, 1150px);
-                height: 85dvh;
-                max-height: 800px;
-                flex: none;
-                border-radius: 20px;
-                overflow: hidden;
-                box-shadow: 0 8px 40px rgba(0,0,0,0.18);
-            }
-            .app-body {
-                border-bottom-left-radius: 20px;
-                border-bottom-right-radius: 20px;
             }
             .header          { padding: 14px 24px; }
             .header-logo-img { height: 36px; }
@@ -433,6 +419,29 @@
             .pagination      { padding: 12px 24px; }
             .toolbar-title   { font-size: 20px; }
             table            { min-width: 0; width: 100%; }
+        }
+
+        /* Desktop: centered floating card, SWCorp standard (same as Lowe's Invoice
+           Reconciler). It fills the viewport minus a gap that scales with the
+           screen, up to 1480×920. Below 1180×720 the card is too small: the frame
+           fills the viewport, no edge or shadow (rules above). */
+        @media (min-width: 1180px) and (min-height: 720px) {
+            body {
+                --gap: clamp(20px, 4vmin, 48px);
+                padding: var(--gap);
+            }
+            .app-frame {
+                width: min(1480px, 100%);
+                height: min(920px, calc(100dvh - 2 * var(--gap)));
+                flex: none;
+                border-radius: 20px;
+                overflow: hidden;
+                box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+            }
+            .app-body {
+                border-bottom-left-radius: 20px;
+                border-bottom-right-radius: 20px;
+            }
         }
     </style>
 </head>
