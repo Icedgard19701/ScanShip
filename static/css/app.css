@@ -1,0 +1,1016 @@
+/* ScanShip — app styles.
+   Moved out of the templates (2026-10-01). Family rules and tokens:
+   C:\Publish\SWCORP\swcorp-app-family (CLAUDE.md, css/). Colors and fonts come
+   from swcorp-tokens.css, loaded before this file. Shell, header, menu,
+   toasts, table, search and pager are the family's (same as Amazon Returns). */
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --sat: env(safe-area-inset-top,    0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left,   0px);
+  --sar: env(safe-area-inset-right,  0px);
+}
+
+/* ── ROOT SHELL ──────────────────────────────────────── */
+html {
+  height: 100dvh;
+  overflow: hidden;
+}
+body {
+  font-family: var(--font);
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);   /* family: text ink, titles navy */
+  background: var(--white);
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top:    var(--sat);
+  padding-bottom: var(--sab);
+  padding-left:   var(--sal);
+  padding-right:  var(--sar);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── APP FRAME ───────────────────────────────────────── */
+.app-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--white);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ──────────────────────────────────────────── */
+/* Family layout (= Lowe's Invoice Reconciler .hdr): navy 56px, logo ·
+   divider · app name on the left, only the menu button on the right. No
+   z-index here: the menu button has to stack above the side menu, which
+   covers this header when open. */
+.header {
+  background: var(--navy); color: var(--white);
+  display: flex; align-items: center; gap: 20px;
+  height: 56px; padding: 0 24px; flex-shrink: 0;
+  position: relative;
+}
+.header-logo-img { height: 26px; width: auto; display: block; flex: none; }
+.header-home {
+  flex: none; display: block; border-radius: 4px;
+  transition: opacity .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.header-home:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .header-home:hover { opacity: .85; } }
+.header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.28); flex: none; }
+.header-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -.005em; color: var(--white);
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.header-grow { flex: 1; }
+/* Inside Acumatica its screen title already names the app (and so does the
+   page title): the header keeps only the logo and the menu button. */
+html.embedded .header-sep, html.embedded .header-title { display: none; }
+/* The open menu covers the header's right corner, and every layer there is
+   cut by the window's rounded corner: each one's soft edge lets a little of
+   the layer below through, so the header's navy tinted the corner under the
+   white panel (measured: 217,223,227 instead of white). While the panel
+   covers that corner, the header pulls its own corner in (rounder, so it
+   paints nothing in the curve's soft edge). The switch happens only under
+   the panel — 100ms after opening (the circle already covers the corner) and
+   370ms after closing starts (just before the shrinking circle uncovers it) —
+   so the window's outline never visibly changes. */
+.header { transition: border-top-right-radius 0s linear 370ms; }
+body.menu-open .header { border-top-right-radius: 32px; transition-delay: 100ms; }
+.header :focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+
+/* ── MENU BUTTON + SIDE MENU ─────────────────────────── */
+/* motion.dev "variants", in CSS. The white disc behind the menu button IS
+   the menu: the side menu is a white panel the full height of the window
+   (over the header too), clipped to a 36px circle centred on the button.
+   Opening grows that circle until it fills the panel (drawer curve), then
+   the rows rise in, 60ms apart; the top and bottom lines of the button bend
+   into an X while the middle one fades. Closing is the reverse and quicker:
+   rows drop away at once, then the circle shrinks back into the disc. */
+.menu-toggle {
+  position: relative; z-index: 41;   /* above the open menu */
+  flex: none; display: grid; place-items: center;
+  width: 36px; height: 36px; margin-right: -6px; border-radius: 50%;
+  color: var(--white); background: none; border: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  /* Closing: the lines stay navy while the circle shrinks over them, then turn white. */
+  transition: transform var(--dur-press) var(--ease-out), color 160ms ease 460ms;
+}
+body.menu-open .menu-toggle { color: var(--navy); transition: transform var(--dur-press) var(--ease-out), color 120ms ease; }
+.menu-toggle:active { transform: scale(.94); }
+.menu-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; overflow: visible; }
+/* Lines become the X by moving their ends (CSS d), like the original. */
+.menu-toggle .l1 { d: path("M4 6.5 L20 6.5"); }
+.menu-toggle .l2 { d: path("M4 12 L20 12"); }
+.menu-toggle .l3 { d: path("M4 17.5 L20 17.5"); }
+.menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 160ms ease; }
+body.menu-open .menu-toggle .l1 { d: path("M6 18 L18 6"); }
+body.menu-open .menu-toggle .l2 { opacity: 0; }
+body.menu-open .menu-toggle .l3 { d: path("M6 6 L18 18"); }
+body.menu-open .menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 120ms ease; }
+.menu-toggle:focus-visible { outline: 2px solid var(--white); outline-offset: 3px; }
+body.menu-open .menu-toggle:focus-visible { outline-color: var(--navy); }
+
+.side-menu {
+  --cx: calc(100% - 36px); --cy: 28px;          /* the button's centre (JS measures it) */
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: min(320px, 100%); padding: 76px 14px 24px; overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  clip-path: circle(0px at var(--cx) var(--cy));
+  transition: clip-path 420ms var(--ease-in-out) 140ms;
+}
+.side-menu.open {
+  clip-path: circle(var(--menu-r, 1200px) at var(--cx) var(--cy));
+  /* No shadow: its navy blur reached the window's rounded corner and tinted
+     it; the dimmed scrim already sets the panel apart. */
+  transition: clip-path 640ms cubic-bezier(.32, .72, 0, 1);
+}
+/* Picking an entry: the menu closes at once and fast (body.menu-quick). */
+body.menu-quick .side-menu { transition: clip-path 220ms cubic-bezier(.23, 1, .32, 1); }
+body.menu-quick .menu-anim { transition: opacity 80ms ease; transition-delay: 0ms; }
+body.menu-quick .menu-scrim { transition: opacity 160ms ease, visibility 0s linear 160ms; }
+body.menu-quick .menu-toggle { transition: transform var(--dur-press) var(--ease-out), color 120ms ease 120ms; }
+/* corner back while the shrinking circle still covers it (r 75px at ~97ms, measured) */
+body.menu-quick .header { transition: border-top-right-radius 0s linear 90ms; }
+
+/* The rest of the window dims a little while the menu is open; a click there
+   closes it. It stops where the panel starts: under the panel it would only
+   tint the window's rounded corner through the curve's soft edge. */
+.menu-scrim {
+  position: absolute; top: 0; left: 0; bottom: 0; right: min(320px, 100%); z-index: 39;
+  background: rgba(21,46,69,.18); opacity: 0; visibility: hidden;
+  transition: opacity 240ms ease, visibility 0s linear 240ms;
+}
+.menu-scrim.open { opacity: 1; visibility: visible; transition: opacity 240ms ease, visibility 0s; }
+
+.menu-anim { opacity: 0; transform: translateY(24px); transition: opacity 120ms ease, transform 160ms var(--ease-out); }
+.side-menu.open .menu-anim {
+  opacity: 1; transform: none;
+  transition: opacity 320ms var(--ease-out), transform 420ms var(--ease-out);
+  transition-delay: calc(180ms + var(--i, 0) * 60ms);
+}
+/* The entries sit centred in the panel's free height (top margin keeps them
+   clear of the button). */
+.menu-body { position: relative; margin: auto 0; }
+/* Pointer glide: one soft highlight slides to the entry under the mouse and
+   fades when the pointer leaves the list: it shows where the click lands,
+   and moving between entries reads as one surface. Mouse only. */
+.menu-glide {
+  position: absolute; left: 0; right: 0; top: 0; height: 0;
+  border-radius: 10px; background: var(--surface-2);
+  opacity: 0; pointer-events: none;
+  transition: transform 240ms var(--ease-out), opacity 160ms ease;
+}
+.menu-glide.on { opacity: 1; }
+.menu-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.menu-item {
+  position: relative;   /* over the glide */
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 10px; background: none;
+  font: inherit; text-align: left; text-decoration: none; color: var(--ink); cursor: pointer;
+  transition: background-color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.menu-item:active { transform: scale(.98); }
+.menu-item:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+/* Each entry carries its destination's own mark (bill, parcel, SharePoint),
+   painted in navy through a mask so the menu keeps one colour; the current
+   view inverts it to white on a navy tile. */
+.menu-ic {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border: 1.5px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--navy);
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+.menu-logo {
+  width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat;
+}
+.menu-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.menu-t small { font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-item[aria-current] { background: var(--navy-50); }
+.menu-item[aria-current] .menu-t { color: var(--navy); }
+.menu-item[aria-current] .menu-ic { background: var(--navy); border-color: var(--navy); color: var(--white); }
+@media (hover: hover) and (pointer: fine) {
+  .menu-toggle:hover { transform: scale(1.06); }
+  .menu-item:not([aria-current]):hover .menu-ic { border-color: var(--navy); }
+}
+
+/* ── POP-OUT BUBBLE (inside Acumatica only) ──────────── */
+/* A small round button in the bottom-right corner that opens the app in its
+   own browser tab. Nearly invisible at rest (it is a secondary way out, not
+   part of the work); it comes up under the pointer or keyboard focus. No
+   tooltip (family rule): the aria-label names it. On touch it stays at a
+   readable resting opacity. */
+.pop-out { display: none; }
+html.embedded .pop-out {
+  position: fixed; right: 14px; bottom: 14px; z-index: 70;
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--navy); color: var(--white);
+  box-shadow: 0 4px 14px rgba(21,46,69,.18);
+  opacity: .22; transform: scale(.92);
+  transition: opacity .2s ease, transform var(--dur-press) var(--ease-out), box-shadow .2s ease;
+}
+html.embedded .pop-out svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+html.embedded .pop-out:hover, html.embedded .pop-out:focus-visible { opacity: 1; transform: none; box-shadow: 0 6px 18px rgba(21,46,69,.26); }
+html.embedded .pop-out:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+html.embedded .pop-out:active { transform: scale(.94); }
+@media (hover: none) { html.embedded .pop-out { opacity: .6; transform: none; } }
+/* ── APP BODY ────────────────────────────────────────── */
+.app-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  position: relative;
+}
+
+/* ── SCREENS ─────────────────────────────────────────────
+   The page never scrolls: only the table region inside a
+   screen does. Everything else is flex-shrink: 0. */
+.screen { display: none; flex: 1; min-height: 0; flex-direction: column; }
+.screen.active { display: flex; }
+
+/* One flex column per screen. Every child measures its own content; the
+   single greedy child carries flex:1 and a min-height floor. Nothing
+   declares a ratio — the proportions fall out of what is on screen.
+   overflow-y is the safety valve for when the floors no longer fit. */
+.screen-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px 16px;
+  display: flex; flex-direction: column;
+  gap: clamp(10px,1.5vw,16px);
+}
+/* Gutters by family tier (swcorp-app-family, "Responsive"): phone 20/16 ·
+   compact 24 · desktop 28/32 · short window 18/24. The bottom stays tighter:
+   the pager bar sits right under the table. */
+@media (min-width: 600px)  { .screen-body { padding: 24px 24px 20px; } }
+@media (min-width: 1181px) { .screen-body { padding: 28px 32px 20px; } }
+@media (min-width: 600px) and (max-height: 820px) { .screen-body { padding: 18px 24px 14px; } }
+/* The greedy child. Empty means absent, so it never holds dead space. */
+.fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* An empty child would still claim a gap, so it drops out of the column. */
+.screen-body > :empty { display: none; }
+
+/* Page title + subtitle: family type scale (= LIR .titlebar, Freight Bill).
+   Title 20/800, line-height 1.45, -.01em; 18px on phones. Subtitle one line,
+   13px/1.65 ink-3, 4px under the title. */
+.page-title {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.45;
+  letter-spacing: -.01em;
+  color: var(--navy);
+  text-wrap: balance;
+}
+.page-subtitle {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.65;
+  margin-top: 4px;
+  max-width: 80ch;
+  text-wrap: pretty;
+}
+@media (max-width: 599px) { .page-title { font-size: 18px; } }
+
+/* Toasts sit above the bubble so they never cover it. */
+html.embedded .toast-stack { bottom: calc(14px + 32px + 10px + var(--sab)); }
+
+/* ── TOAST STACK ─────────────────────────────────────── */
+/* Family standard (as Lowe's Invoice Reconciler): every toast — errors, the
+   stacks at the bottom right,
+   outside the card, newest at the bottom. White card, 3px left edge carrying
+   the meaning (navy info, amber pending, red failure). */
+.toast-stack {
+  position: fixed; right: 16px; bottom: calc(16px + var(--sab)); z-index: 9999;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast-stack > * { pointer-events: auto; }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 16px)) scale(.96); } }
+@keyframes toast-out { to   { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 10px)); } }
+.err-fixed-toast {
+  display: none; position: relative;
+  min-width: 280px; max-width: 100%;
+  background: #fff;
+  border: 1px solid var(--line); border-left: 3px solid var(--navy);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: var(--shadow-pop);
+}
+.err-fixed-toast.visible { display: block; animation: toast-in var(--dur-toast) var(--ease-out); }
+.err-fixed-toast.hiding { animation: toast-out .16s ease-out forwards; }
+/* Time left: a 2px line along the foot that empties over the toast's 6s
+   (the JS dismisses on its animationend). Paused while hovered or focused.
+   Same colour as the toast's edge; kept under reduced motion (it is
+   information, not decoration). */
+.toast-timer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--navy); opacity: .55;
+  transform-origin: left center;
+  animation: toast-timer 6s linear forwards;
+}
+@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast-stack > :hover > .toast-timer,
+.toast-stack > :focus-within > .toast-timer { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .err-fixed-toast.visible { animation-name: fade-in; }
+  .err-fixed-toast.hiding { animation-name: fade-out; }
+}
+@media (max-width: 599px) {
+  /* Phones: toasts drop in at the top, under the header (the thumb works the
+     bottom of the screen), full width; they enter from above and leave upward. */
+  .toast-stack { left: 12px; right: 12px; top: calc(56px + 8px + var(--sat)); bottom: auto; max-width: none; align-items: stretch; z-index: 45; }
+  .toast-stack > * { --toast-dy: -1; }
+  html.embedded .toast-stack { bottom: auto; }   /* phones: still at the top */
+  .err-fixed-toast { min-width: 0; }
+}
+@keyframes fade-in  { from { opacity: 0; } }
+@keyframes fade-out { to   { opacity: 0; } }
+.err-toast-inner {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 13px 36px 13px 14px;
+}
+.err-toast-icon {
+  flex-shrink: 0; margin-top: 1px;
+  width: 16px; height: 16px; stroke: var(--navy); fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.err-toast-body { display: flex; flex-direction: column; gap: 2px; }
+.err-toast-title {
+  font-size: 13px; font-weight: 700; color: var(--navy); letter-spacing: .1px;
+}
+.err-toast-msg {
+  font-size: 12px; color: rgba(28,61,90,.65); line-height: 1.5;
+}
+.err-toast-close {
+  position: absolute; top: 9px; right: 9px;
+  background: none; border: none; cursor: pointer;
+  color: rgba(28,61,90,.35); font-size: 15px; line-height: 1;
+  padding: 4px; border-radius: 4px;
+  transition: color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.err-toast-close:active { transform: scale(.95); }
+@media (hover: hover) and (pointer: fine) { .err-toast-close:hover { color: var(--navy); } }
+/* Paused while the tab is hidden, so a message is never missed (html.tab-hidden, app.js). */
+html.tab-hidden .toast-timer { animation-play-state: paused; }
+
+.err-fixed-toast.error { border-left-color: var(--block); }
+.err-fixed-toast.error .err-toast-icon { stroke: var(--block); }
+.err-fixed-toast.error .toast-timer { background: var(--block); }
+.err-fixed-toast.ok { border-left-color: var(--ok); }
+.err-fixed-toast.ok .err-toast-icon  { stroke: var(--ok); }
+.err-fixed-toast.ok .toast-timer { background: var(--ok); }
+
+/* ── KEYBOARD FOCUS ───────────────────────────────────────
+   Family rule: everything works from the keyboard, and the ring shows only
+   for keyboard focus. Table parts draw it inset so the clipping of the table
+   wrapper cannot cut it off. */
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+th.sortable:focus-visible,
+tr[data-run]:focus-visible,
+td[data-tip]:focus-visible { outline-offset: -2px; }
+
+/* ── SCREEN TRANSITIONS ──────────────────────────────── */
+/* Family rule (swcorp-app-family, Movimiento): the old screen goes at once
+   and the new one comes in from the left, always left to right, 280ms,
+   transform + opacity only. The keyframes below are the family's; the
+   leaving-* classes no longer animate (exit time 0 in the JS). */
+@keyframes scr-in-family {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+/* Going into a detail and coming back out are opposite moves, so they read
+   as opposite: the outgoing screen leaves the way the incoming one arrives
+   from. The distance is small on purpose -- the movement says which
+   direction the reader went, it is not the thing being looked at. */
+/* A stage in a sequence is not a sideways move. Nothing was navigated to,
+   nothing was left behind -- the same screen is reporting a later moment of
+   the same job -- so it rises into place instead of sliding in from a side,
+   which is what a sideways slide would falsely promise. */
+
+/* The exit is shorter than the entrance and runs on an accelerating curve:
+   what is leaving should be gone before the eye follows it, and what
+   arrives should settle. Both screens are laid over each other while this
+   runs, so the outgoing one is taken out of the layout. */
+.screen.leaving-fwd,
+.screen.leaving-back {
+  display: flex; position: absolute; inset: 0;
+  pointer-events: none;
+}
+.screen.leaving-fwd, .screen.leaving-back { display: none; }
+.screen.entering-fwd, .screen.entering-back { animation: scr-in-family 280ms cubic-bezier(.23,1,.32,1) both; }
+
+/* The two views are separate documents, reached from the two icons in the
+   header corners, so the same left/right language has to cross a page
+   load: the outgoing document leaves toward the corner that was clicked
+   and the incoming one arrives from the opposite edge. Same keyframes as
+   the screens above -- one vocabulary for "you moved sideways", whether
+   the move happened inside a document or between two. */
+.app-body.entering-fwd, .app-body.entering-back { animation: scr-in-family 280ms cubic-bezier(.23,1,.32,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The screen still changes, it just does not travel: the animation is
+     dropped, not replaced by a slower one. */
+  :root:not([data-motion="force"]) .screen.leaving-fwd,
+:root:not([data-motion="force"]) .screen.leaving-back,
+:root:not([data-motion="force"]) .screen.entering-fwd,
+:root:not([data-motion="force"]) .screen.entering-back,
+:root:not([data-motion="force"]) .app-body.leaving-fwd,
+:root:not([data-motion="force"]) .app-body.leaving-back,
+:root:not([data-motion="force"]) .app-body.entering-fwd,
+:root:not([data-motion="force"]) .app-body.entering-back { animation: none; }
+  :root:not([data-motion="force"]) .screen.leaving-fwd,
+:root:not([data-motion="force"]) .screen.leaving-back { display: none; }
+}
+
+/* ── TABLE — the only scrolling region ───────────────── */
+/* The table arriving is the moment the screen changes character: the drop
+   zone folds into a row and the data settles in from below. The same
+   curve as a screen entering, so it reads as one movement. */
+/* No frame and no radius: the navy header is the top edge and the row
+   rules are the only lines the table needs. A box around it would draw a
+   second border a few pixels from the card's own. */
+/* Horizontal yes -- a narrow phone cannot hold eight columns -- vertical
+   never: the page size is measured to fit, so a scrollbar here would mean
+   the measurement was wrong, and a half row cut by the fold reads as data
+   the reader is missing. */
+.table-wrap {
+  flex: 1; min-height: 0;
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+  border-top: 1px solid var(--surface-3);
+  animation: table-enter .34s cubic-bezier(.22,1,.36,1) backwards;
+}
+@keyframes table-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes row-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+tbody tr { animation: row-enter .3s ease backwards; }
+/* Every row a page can hold staggers (the limit follows the window height, up
+   to 30 on a tall screen); past the tenth the step halves so the last row
+   still lands within ~.7s. A row left out would pop in ahead of the rest. */
+tbody tr:nth-child(1) { animation-delay: 0.100s; }
+tbody tr:nth-child(2) { animation-delay: 0.130s; }
+tbody tr:nth-child(3) { animation-delay: 0.160s; }
+tbody tr:nth-child(4) { animation-delay: 0.190s; }
+tbody tr:nth-child(5) { animation-delay: 0.220s; }
+tbody tr:nth-child(6) { animation-delay: 0.250s; }
+tbody tr:nth-child(7) { animation-delay: 0.280s; }
+tbody tr:nth-child(8) { animation-delay: 0.310s; }
+tbody tr:nth-child(9) { animation-delay: 0.340s; }
+tbody tr:nth-child(10) { animation-delay: 0.370s; }
+tbody tr:nth-child(11) { animation-delay: 0.385s; }
+tbody tr:nth-child(12) { animation-delay: 0.400s; }
+tbody tr:nth-child(13) { animation-delay: 0.415s; }
+tbody tr:nth-child(14) { animation-delay: 0.430s; }
+tbody tr:nth-child(15) { animation-delay: 0.445s; }
+tbody tr:nth-child(16) { animation-delay: 0.460s; }
+tbody tr:nth-child(17) { animation-delay: 0.475s; }
+tbody tr:nth-child(18) { animation-delay: 0.490s; }
+tbody tr:nth-child(19) { animation-delay: 0.505s; }
+tbody tr:nth-child(20) { animation-delay: 0.520s; }
+tbody tr:nth-child(21) { animation-delay: 0.535s; }
+tbody tr:nth-child(22) { animation-delay: 0.550s; }
+tbody tr:nth-child(23) { animation-delay: 0.565s; }
+tbody tr:nth-child(24) { animation-delay: 0.580s; }
+tbody tr:nth-child(25) { animation-delay: 0.595s; }
+tbody tr:nth-child(26) { animation-delay: 0.610s; }
+tbody tr:nth-child(27) { animation-delay: 0.625s; }
+tbody tr:nth-child(28) { animation-delay: 0.640s; }
+tbody tr:nth-child(29) { animation-delay: 0.655s; }
+tbody tr:nth-child(30) { animation-delay: 0.670s; }
+tbody tr:nth-child(n+31) { animation: none; }
+/* A silent refresh rebuilds the table; without this it would bounce on
+   every poll. */
+.table-wrap.silent, .table-wrap.silent tbody tr { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="force"]) .table-wrap,
+  :root:not([data-motion="force"]) tbody tr { animation: none; }
+}
+/* Column widths come from the colgroup, in percentages, so they hold still
+   while the data changes. Fixed layout cannot grow, so every cell clips
+   with an ellipsis and carries the full value in a title. */
+table {
+  table-layout: fixed; border-collapse: collapse;
+  width: 100%; min-width: 640px; font-size: 12px;
+}
+thead { position: sticky; top: 0; z-index: 10; }
+thead tr { background: var(--navy); }
+thead th {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--navy); color: rgba(255,255,255,.85);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  text-align: center; padding: 10px 12px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* A whole header cell is the target, not the glyph: the arrow is 9px and
+   nobody aims at it. Only the columns SQL can order carry the class, so a
+   column that cannot sort never offers to. */
+thead th.sortable { cursor: pointer; user-select: none; }
+@media (hover: hover) and (pointer: fine) { thead th.sortable:hover { background: var(--navy-dark); } }
+/* Every sortable column shows its arrow faintly — that is what says the
+   header is a control. The active one goes solid and flips the glyph. */
+.sort-arrow { display: inline-block; margin-left: 3px; font-size: 9px; opacity: .35; }
+thead th.sort-asc .sort-arrow,
+thead th.sort-desc .sort-arrow { opacity: 1; }
+tbody tr { border-bottom: 1px solid var(--surface-3); transition: background .12s; }
+tbody tr:last-child { border-bottom: none; }
+tbody td {
+  padding: 9px 12px; color: var(--ink); font-weight: 400;
+  text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+@media (hover: hover) and (pointer: fine) { tbody tr:hover td { background: var(--surface-2); } }
+td.mono { font-variant-numeric: tabular-nums; }
+td.dim  { color: var(--ink-3); }
+.row-open {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px; color: var(--ink-3);
+  transition: color .2s, background .2s;
+}
+@media (hover: hover) and (pointer: fine) { tr[data-run]:hover .row-open { color: var(--navy); background: var(--surface-3); } }
+tr[data-run] { cursor: pointer; }
+.acumatica-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1.5px solid var(--line); color: var(--ink-2);
+  transition: border-color .2s, color .2s, transform var(--dur-press) var(--ease-out);
+}
+.acumatica-link:active { transform: scale(.94); }
+@media (hover: hover) and (pointer: fine) { .acumatica-link:hover { border-color: var(--navy); color: var(--navy); } }
+/* Free text: a sentence starts at the left edge. The header above it does
+   not — the label row reads as one band, so every label stays centred. */
+td.left { text-align: left; }
+/* 640px is the right floor for a seven column table. Past that the cells
+   hit the ellipsis before the data is legible, so a wider table asks for
+   more room and scrolls horizontally instead of clipping every value. */
+.table-wrap.wide table { min-width: 900px; }
+/* Only rows that open a detail screen invite a click. */
+tbody tr[data-run] { cursor: pointer; }
+
+/* Badge: dot plus text in a full pill. Green reads as done, gray as neutral;
+   red only where a row really failed. */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 20px;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .3px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: currentColor; }
+.badge-ok      { background: var(--ok-bg); color: var(--ok); }
+.badge-neutral { background: var(--surface-3); color: var(--ink-2); }
+.badge-bad     { background: var(--block-bg);   color: var(--block); }
+.badge-warn    { background: var(--warn-bg);        color: var(--amber-stroke); }
+.badge-info    { background: var(--navy-50);        color: var(--navy); }
+
+/* ── ACTION BAR ──────────────────────────────────────── */
+.actions {
+  flex-shrink: 0;
+  padding: 12px clamp(16px,3vw,32px) calc(12px + var(--sab));
+  border-top: 1.5px solid var(--line);
+  display: flex; gap: 10px; align-items: center;
+}
+.btn {
+  height: 44px; border-radius: 8px; border: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 0 18px; transition: background .2s, border-color .2s, color .2s, transform var(--dur-press) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-secondary { background: var(--white); border: 1.5px solid var(--line); color: var(--ink-2); }
+.btn-secondary:active { border-color: var(--navy); color: var(--navy); }
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-filter { border-radius: 10px; }
+.btn-filter[aria-pressed="true"] {
+  background: var(--navy); border-color: var(--navy); color: var(--white);
+}
+.filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.filter-row .btn-filter { height: 38px; }
+
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 12px;
+  font-weight: 600; color: var(--ink-2); cursor: pointer; user-select: none; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--navy); cursor: pointer; }
+
+/* ── SEARCH (as LIR) ──────────────────────────────────────
+   Tucked: only its icon sits at the end of the row; it opens on hover or
+   focus (a click or Tab lands in the field) and stays open while it has
+   text. It grows to the left, so nothing beside it moves. */
+.search {
+  margin-left: auto; flex: none;
+  display: flex; align-items: center; gap: 6px;
+  height: 38px; width: 260px; padding: 0 10px;
+  border: 1.5px solid var(--line-strong); border-radius: var(--r-ctl);
+  background: var(--surface-2); color: var(--ink-3);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.search .i {
+  flex: none; width: 16px; height: 16px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.search input {
+  border: 0; outline: 0; flex: 1; min-width: 0; background: none;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.search input::placeholder { color: var(--ink-3); font-weight: 400; }
+.search:focus-within { border-color: var(--navy); background: var(--surface); box-shadow: var(--ring); }
+.search.tuck {
+  width: 38px; overflow: hidden; cursor: pointer;
+  border-color: transparent; background: transparent; color: var(--ink-2);
+  transition: width 280ms var(--ease-out), border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.search.tuck input { opacity: 0; transition: opacity 140ms ease; cursor: pointer; }
+.search.tuck:hover, .search.tuck:focus-within, .search.tuck.has-q {
+  width: 260px; border-color: var(--line-strong); background: var(--surface-2); color: var(--ink-3); cursor: text;
+}
+.search.tuck:hover input, .search.tuck:focus-within input, .search.tuck.has-q input {
+  opacity: 1; transition-delay: 80ms; cursor: text;
+}
+.search.tuck:focus-within { border-color: var(--navy); background: var(--surface); box-shadow: var(--ring); }
+.search-x {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-right: -4px;
+  padding: 0; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.search-x[hidden] { display: none; }
+.search-x .i { width: 12px; height: 12px; }
+@media (hover: hover) and (pointer: fine) { .search-x:hover { background: var(--surface-3); color: var(--ink); } }
+/* Just cleared with the x: back to the icon even while the pointer is over it. */
+.search.tuck.shut:hover { width: 38px; border-color: transparent; background: transparent; color: var(--ink-2); cursor: pointer; }
+.search.tuck.shut:hover input { opacity: 0; transition-delay: 0s; }
+/* Phones have no hover: a tap on the icon focuses the field and opens it;
+   open, it never runs past the row (16px is iOS's no-zoom floor). */
+@media (max-width: 599px) {
+  .search.tuck:focus-within, .search.tuck.has-q { width: min(260px, 100%); }
+  .search input { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="force"]) .search.tuck,
+  :root:not([data-motion="force"]) .search.tuck input { transition: none; }
+}
+
+/* ── PAGER ───────────────────────────────────────────── */
+.btn-sm { height: 36px; padding: 0 12px; font-size: 13px; }
+.pager {
+  margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+/* Three items, centred, in the reading order of the act: back, where you
+   are, forward. Centred rather than pushed right because the row carries
+   nothing else to balance against. */
+.actions.centered { justify-content: center; }
+.actions.centered .pager { margin-left: 0; }
+.pager-info {
+  font-size: 12px; font-weight: 600; color: var(--ink-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  padding: 0 4px;
+}
+.pager-btn { padding: 0 14px; font-size: 13px; gap: 5px; }
+@media (hover: hover) and (pointer: fine) { .pager-btn:hover:not(:disabled) { border-color: var(--navy); color: var(--navy); } }
+/* Inline SVG with stroke: currentColor, so the chevron follows the label
+   into navy on hover without a rule of its own. */
+.pager-btn svg {
+  width: 14px; height: 14px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+/* Deeper than the .5 the 44px action buttons use: a pager end-stop should
+   read as unavailable, not merely quiet. */
+.pager-btn:disabled { opacity: .35; cursor: default; }
+
+/* ── EMPTY / SKELETON ────────────────────────────────── */
+.empty { flex: 1; min-height: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; padding: 24px;
+  border-top: 1px solid var(--surface-3); }
+.empty svg { width: 44px; height: 44px; stroke: var(--line-mid); fill: none;
+  stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; margin: 0 auto 10px; }
+.empty-text { font-size: 13px; color: var(--ink-3); line-height: 1.6; text-align: center; }
+.skel-bar { height: 12px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-3) 25%, var(--line) 50%, var(--surface-3) 75%);
+  background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* The loading state is the same table: same colgroup, same header, same row
+   height. The data then lands in place instead of pushing the layout
+   around, and the header is honest because it is known before the fetch. */
+.skel-row td { padding: 9px 12px; }
+.skel-row td .skel-bar { max-width: 100%; margin: 0 auto; }
+.skel-row td.left .skel-bar { margin-left: 0; }
+/* The rows fade down the table, so the eye is told where the content
+   begins instead of being handed twenty equally loud bars. */
+.skel-row:nth-child(n+6)  { opacity: .72; }
+.skel-row:nth-child(n+11) { opacity: .5;  }
+.skel-row:nth-child(n+16) { opacity: .32; }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="force"]) .skel-bar { animation: none; }
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────── */
+/* From tablet up the card is centred in the window (family standard). */
+@media (min-width: 768px) {
+  body { align-items: center; justify-content: center; }
+}
+/* Desktop: centered floating card, SWCorp standard (same as Lowe's Invoice
+   Reconciler). It fills the viewport minus a gap that scales with the
+   screen, up to 1480×920. Below 1180×720 the card is too small: the frame
+   fills the viewport, no edge or shadow (rules above). */
+@media (min-width: 1180px) and (min-height: 720px) {
+  body {
+    --gap: clamp(20px, 4vmin, 48px);
+    padding: var(--gap);
+  }
+  .app-frame {
+    width: min(1480px, 100%);
+    height: min(920px, calc(100dvh - 2 * var(--gap)));
+    flex: none;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  }
+  .app-body {
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The menu opens at once (no growing circle); its rows fade in. */
+  .side-menu, .side-menu.open { transition: none; }
+  .menu-anim, .side-menu.open .menu-anim { transform: none; transition: opacity 150ms ease; transition-delay: 0ms; }
+  .menu-toggle path, body.menu-open .menu-toggle path { transition: none; }
+  .menu-toggle:hover { transform: none; }
+  .menu-glide { transition: opacity 150ms ease; }
+}
+/* Phones: tighter header, the menu takes the whole width under it. */
+@media (max-width: 599px) {
+  .header { gap: 12px; padding: 0 16px; }
+  .header-logo-img { height: 22px; }
+  .header-title { font-size: 14px; }
+  .side-menu { width: 100%; }
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   SCANNER VIEW
+   ══════════════════════════════════════════════════════════ */
+
+/* The order field is the scanner's whole job, so it is never tucked: a
+   handheld scanner types into whatever has focus, and the field is always
+   there to receive it. Same anatomy as the family search, full width. */
+.scan-field {
+  display: flex; align-items: center; gap: 10px;
+  height: 48px; padding: 0 6px 0 14px; margin-top: 16px;
+  border: 1.5px solid var(--line-strong); border-radius: var(--r-box);
+  background: var(--surface-2); color: var(--ink-3);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.scan-field:focus-within { border-color: var(--navy); background: var(--surface); box-shadow: var(--ring); }
+.scan-field > svg {
+  flex: none; width: 18px; height: 18px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.scan-field input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none;
+  font-family: inherit; font-size: 16px; font-weight: 600; color: var(--ink);
+  letter-spacing: .01em;
+}
+.scan-field input::placeholder { color: var(--ink-3); font-weight: 400; }
+.scan-go {
+  flex: none; width: 36px; height: 36px; border: 0; border-radius: var(--r-ctl);
+  background: var(--navy); color: var(--white); cursor: pointer;
+  display: grid; place-items: center;
+  transition: background-color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.scan-go svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.scan-go:active { transform: scale(.94); background: var(--navy-dark); }
+@media (hover: hover) and (pointer: fine) { .scan-go:hover { background: var(--navy-dark); } }
+/* A scanner is a column, not a dashboard: on a wide card the order keeps a
+   readable width, and the toasts at the bottom right never cover a check. */
+@media (min-width: 768px) { .scan-head, .order { width: 100%; max-width: 720px; } }
+/* Family exception: the Scanner is a phone tool, so its column is centred
+   (title, field, order) instead of starting at the left edge. */
+.scan-head { width: 100%; margin-inline: auto; text-align: center; }
+.scan-head .page-subtitle { margin-inline: auto; }
+.order { width: 100%; margin-inline: auto; }
+
+/* Nothing loaded yet: the empty state fills the rest and says what to do. */
+.scan-empty {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; padding: 24px;
+  color: var(--ink-3); font-size: 13px; line-height: 1.6; text-align: center;
+}
+.scan-empty[hidden] { display: none; }
+.scan-empty svg {
+  width: 52px; height: 52px; fill: none; stroke: var(--line-mid);
+  stroke-width: 1; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ── ORDER ─────────────────────────────────────────────── */
+.order { flex: 1; min-height: 0; display: none; flex-direction: column; }
+.order.active { display: flex; }
+/* The order arriving is a change of screen (family: in from the left). */
+.order.entering { animation: scr-in-family 280ms cubic-bezier(.23,1,.32,1) both; }
+
+/* The one navy surface below the header: the order being worked on, and
+   the field the next barcode goes into. */
+.order-card {
+  flex-shrink: 0; background: var(--navy); color: var(--white);
+  border-radius: var(--r-box); padding: 12px 14px 14px;
+}
+.order-card-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 10px;
+}
+.order-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.65); }
+.order-number {
+  font-size: 16px; font-weight: 800; letter-spacing: -.01em; line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.order-close {
+  flex: none; width: 34px; height: 34px; margin: -4px -6px -4px 0;
+  border: 0; border-radius: var(--r-ctl); background: none; color: rgba(255,255,255,.75);
+  display: grid; place-items: center; cursor: pointer;
+  transition: background-color .15s ease, color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.order-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.order-close:active { transform: scale(.94); background: rgba(255,255,255,.12); }
+@media (hover: hover) and (pointer: fine) { .order-close:hover { background: rgba(255,255,255,.1); color: var(--white); } }
+.order-card :focus-visible { outline-color: var(--white); }
+
+.item-scan {
+  display: flex; align-items: center; gap: 6px;
+  height: 44px; padding: 0 4px 0 12px; border-radius: var(--r-ctl); background: var(--white);
+}
+.item-scan input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none;
+  font-family: inherit; font-size: 16px; font-weight: 600; color: var(--ink);
+}
+.item-scan input::placeholder { color: var(--ink-3); font-weight: 400; }
+.item-scan .scan-go { width: 36px; height: 36px; }
+
+/* ── ITEMS ─────────────────────────────────────────────── */
+.items-head {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 16px 0 8px; min-height: 32px;
+}
+.items-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+.items-right { display: flex; align-items: center; gap: 12px; }
+.items-count { font-size: 12px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.btn-primary { background: var(--navy); color: var(--white); }
+.btn-primary:active:not(:disabled) { background: var(--navy-dark); }
+@media (hover: hover) and (pointer: fine) { .btn-primary:hover:not(:disabled) { background: var(--navy-dark); } }
+.btn-complete { height: 32px; padding: 0 14px; font-size: 13px; }
+.btn-complete[hidden] { display: none; }
+
+/* The only region that scrolls on this view. */
+.items-list {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; padding-bottom: 8px;
+}
+.item-row {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 54px; padding: 9px 8px 9px 14px; margin-bottom: 6px;
+  border: 1.5px solid var(--line); border-radius: var(--r-box); background: var(--white);
+  transition: border-color .2s ease, background-color .2s ease;
+}
+.item-row.scanned { border-color: var(--navy); background: var(--surface-2); }
+.item-info { flex: 1; min-width: 0; line-height: 1.3; }
+.item-sku {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.item-sub {
+  margin-top: 2px; font-size: 12px; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Rows arriving with a new order settle in one after another; a refresh
+   after a scan (same order, one row changed) does not move anything. */
+.items-list.entering .item-row { animation: row-enter .3s ease backwards; }
+.items-list.entering .item-row:nth-child(1) { animation-delay: .06s; }
+.items-list.entering .item-row:nth-child(2) { animation-delay: .09s; }
+.items-list.entering .item-row:nth-child(3) { animation-delay: .12s; }
+.items-list.entering .item-row:nth-child(4) { animation-delay: .15s; }
+.items-list.entering .item-row:nth-child(5) { animation-delay: .18s; }
+.items-list.entering .item-row:nth-child(6) { animation-delay: .21s; }
+.items-list.entering .item-row:nth-child(7) { animation-delay: .24s; }
+.items-list.entering .item-row:nth-child(8) { animation-delay: .27s; }
+.items-list.entering .item-row:nth-child(n+9) { animation-delay: .30s; }
+
+/* The check is a real button: a tap toggles the unit. 44px target around a
+   28px circle. Scanned: navy fill, then the tick draws along its path. */
+.item-check {
+  flex: none; width: 44px; height: 44px; margin: -6px 0;
+  border: 0; background: none; cursor: pointer; border-radius: 50%;
+  display: grid; place-items: center;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.item-check:active { transform: scale(.9); }
+.item-check i {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--line-mid); background: var(--white);
+  display: grid; place-items: center;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+@media (hover: hover) and (pointer: fine) { .item-row:not(.scanned) .item-check:hover i { border-color: var(--navy); } }
+.item-check svg {
+  width: 14px; height: 14px; fill: none; stroke: var(--white);
+  stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24;
+  transition: stroke-dashoffset 140ms var(--ease-out);
+}
+.item-row.scanned .item-check i { background: var(--navy); border-color: var(--navy); }
+.item-row.scanned .item-check svg { stroke-dashoffset: 0; transition: stroke-dashoffset 260ms var(--ease-out) 120ms; }
+.item-row.skel .item-check i { border-color: var(--line); }
+.item-check:disabled { cursor: default; }
+
+/* ── ORDER COMPLETED ───────────────────────────────────── */
+.completed {
+  position: absolute; inset: 0; z-index: 50;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0; padding: 32px 24px max(32px, var(--sab)); text-align: center;
+  background: var(--navy); color: var(--white); cursor: pointer;
+}
+.completed.show { display: flex; animation: fade-in 200ms ease-out; }
+.completed-logo { height: 30px; width: auto; opacity: .9; margin-bottom: 40px; }
+.completed-ring {
+  width: 108px; height: 108px; border-radius: 50%; background: rgba(255,255,255,.12);
+  display: grid; place-items: center; margin-bottom: 28px;
+}
+.completed-dot {
+  width: 78px; height: 78px; border-radius: 50%; background: var(--white);
+  display: grid; place-items: center;
+}
+.completed-dot svg {
+  width: 38px; height: 38px; fill: none; stroke: var(--navy);
+  stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24;
+}
+.completed.show .completed-ring { animation: done-pop 420ms var(--ease-out) both; }
+.completed.show .completed-dot svg { animation: done-tick 320ms var(--ease-out) 220ms forwards; }
+.completed-title { font-size: 24px; font-weight: 800; letter-spacing: -.01em; margin-bottom: 6px; }
+.completed-order { font-size: 15px; font-weight: 600; color: rgba(255,255,255,.65); font-variant-numeric: tabular-nums; }
+.completed-hint { margin-top: 28px; font-size: 12px; color: rgba(255,255,255,.5); }
+@keyframes done-pop  { from { transform: scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes done-tick { to { stroke-dashoffset: 0; } }
+
+/* ── CONFIRM DIALOG ────────────────────────────────────── */
+.dialog-scrim {
+  position: fixed; inset: 0; z-index: 600; padding: 24px;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(21,46,69,.45);
+}
+.dialog-scrim.show { display: flex; animation: fade-in 160ms ease-out; }
+.dialog {
+  width: min(100%, 360px); padding: 20px; border-radius: var(--r-dialog);
+  background: var(--white); box-shadow: 0 12px 40px rgba(21,46,69,.25);
+}
+.dialog-scrim.show .dialog { animation: dialog-in 200ms var(--ease-out); }
+@keyframes dialog-in { from { opacity: 0; transform: scale(.96); } }
+.dialog-title { font-size: 16px; font-weight: 800; color: var(--navy); margin-bottom: 6px; }
+.dialog-text { font-size: 13px; line-height: 1.55; color: var(--ink-2); margin-bottom: 20px; }
+.dialog-actions { display: flex; gap: 10px; }
+.dialog-actions .btn { flex: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="force"]) .order.entering,
+  :root:not([data-motion="force"]) .items-list.entering .item-row,
+  :root:not([data-motion="force"]) .completed.show .completed-ring,
+  :root:not([data-motion="force"]) .dialog-scrim.show .dialog { animation: none; }
+  :root:not([data-motion="force"]) .completed.show .completed-dot svg { animation: none; stroke-dashoffset: 0; }
+  :root:not([data-motion="force"]) .item-check svg { transition: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   SCAN LOG VIEW
+   ══════════════════════════════════════════════════════════ */
+.page-head {
+  display: flex; align-items: flex-start; gap: 16px; flex-shrink: 0; flex-wrap: wrap;
+}
+.page-head-text { flex: 1 1 260px; min-width: 0; }
+.page-head .search { margin-top: 4px; }
+/* Rows stay 38px (family): the badge must not stretch them. */
+.log-main table { line-height: 1.3; }
+.log-main .badge { line-height: 1.3; padding: 2px 8px; }
+/* Phones scroll the table sideways rather than cut every column to a stub. */
+@media (max-width: 767px) { .log-main table { min-width: 780px; } }
+/* The status badge is the widest thing in its column: give it the cell. */
+.log-main tbody td:first-child { padding-left: 6px; padding-right: 6px; }
+.badge-scanned { background: var(--ok-bg); color: var(--ok); }
+.badge-pending { background: var(--surface-3); color: var(--ink-2); }
+.pager-total { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; margin-right: auto; }
+@media (max-width: 599px) { .pager-total { display: none; } .actions { justify-content: center; } }

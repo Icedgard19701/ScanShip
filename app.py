@@ -4,13 +4,14 @@
 # Design is in templates/index.html
 # ============================================================
 
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template
 import pyodbc
 import threading
 import functools
 import time
 import logging
 import ipaddress
+import mimetypes
 import json
 import os
 import requests as http_requests
@@ -37,6 +38,24 @@ logging.root.handlers = [_handler]
 logging.root.setLevel(logging.INFO)
 
 app = Flask(__name__)
+
+# The IIS pool can hand these out as text/plain, which browsers refuse for
+# stylesheets and scripts.
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("font/woff2", ".woff2")
+
+_STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+def asset_version() -> int:
+    """Newest mtime of the static CSS/JS: busts the cache on every deploy."""
+    newest = 0
+    for root, _dirs, files in os.walk(_STATIC):
+        for name in files:
+            if name.endswith((".css", ".js")):
+                newest = max(newest, int(os.path.getmtime(os.path.join(root, name))))
+    return newest
 
 
 # ---- Sync state ----
@@ -705,25 +724,18 @@ def inject_base_url():
     return {
         'base_url': app.config.get('APPLICATION_ROOT', '').rstrip('/'),
         'api_key':  API_KEY,
+        'asset_v':  asset_version(),
     }
 
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", view="scanner")
 
 
 @app.route("/log")
 def log_view():
-    return render_template("log.html")
-
-
-@app.route("/logo.svg")
-def serve_logo():
-    resp = send_from_directory("templates", "SWCorp_logo_Main.svg", mimetype="image/svg+xml")
-    resp.cache_control.max_age = 86400  # cache 24h
-    resp.cache_control.public = True
-    return resp
+    return render_template("log.html", view="log")
 
 
 # ---- API ----
@@ -1081,7 +1093,8 @@ def api_log():
     status = (request.args.get("status") or "").strip()
     try:
         page  = max(1, int(request.args.get("page",  1)))
-        limit = max(10, min(500, int(request.args.get("limit", 50))))
+        # The client sends exactly the rows that fit its window (can be < 10).
+        limit = max(1, min(500, int(request.args.get("limit", 50))))
     except ValueError:
         page, limit = 1, 50
 

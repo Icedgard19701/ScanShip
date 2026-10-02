@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- One title for every view: the tab is an identity, not a breadcrumb. -->
+  <title>ScanShip</title>
+  <link rel="icon" type="image/svg+xml" href="{{ base_url }}/static/swcorp-favicon.svg">
+  <!-- Inside Acumatica (an iframe) its screen already names the app: mark it
+       before the first paint so the header drops its own title. -->
+  <script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
+  <link rel="stylesheet" href="{{ base_url }}/static/css/swcorp-tokens.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="{{ base_url }}/static/css/app.css?v={{ asset_v }}">
+</head>
+<body>
+
+<div class="app-frame">
+
+  <!-- HEADER: family layout (logo, divider, app name; the right corner holds
+       only the menu button). The logo goes to the main view (Scanner). -->
+  <header class="header">
+    <a class="header-home" id="header-home" href="{{ base_url }}/" aria-label="SWCorp, go to Scanner">
+      <img class="header-logo-img" src="{{ base_url }}/static/swcorp-logo-white.svg" alt="">
+    </a>
+    <span class="header-sep" aria-hidden="true"></span>
+    <span class="header-title">ScanShip</span>
+    <span class="header-grow"></span>
+    <button class="menu-toggle" id="menu-toggle" type="button"
+            aria-label="Open menu" aria-expanded="false" aria-controls="side-menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="l1"/><path class="l2"/><path class="l3"/></svg>
+    </button>
+  </header>
+
+  <!-- Side menu: grows as a circle out of the menu button. The app's views. -->
+  <div class="menu-scrim" id="menu-scrim"></div>
+  <nav class="side-menu" id="side-menu" aria-label="Menu" inert>
+    <div class="menu-body">
+      <span class="menu-glide" aria-hidden="true"></span>
+      <ul class="menu-list">
+        <li class="menu-anim" style="--i:0">
+          <a class="menu-item" data-view="scanner" href="{{ base_url }}/" {% if view == 'scanner' %}aria-current="page"{% endif %}>
+            <span class="menu-ic" aria-hidden="true"><span class="menu-logo" style="--logo: url('{{ base_url }}/static/img/menu-scanner.svg')"></span></span>
+            <span class="menu-t">Scanner<small>Scan the items of an order</small></span>
+          </a>
+        </li>
+        <li class="menu-anim" style="--i:1">
+          <a class="menu-item" data-view="log" href="{{ base_url }}/log" {% if view == 'log' %}aria-current="page"{% endif %}>
+            <span class="menu-ic" aria-hidden="true"><span class="menu-logo" style="--logo: url('{{ base_url }}/static/img/menu-log.svg')"></span></span>
+            <span class="menu-t">Scan Log<small>Every unit, scanned or pending</small></span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="app-body" id="app-body">
+    {% block body %}{% endblock %}
+  </div>
+
+  {% block overlays %}{% endblock %}
+
+</div><!-- /app-frame -->
+
+{% block dialogs %}{% endblock %}
+
+<!-- Toast stack: family standard, bottom-right (top on phones), outside the
+     card; shared by both views, filled by `showToast`. -->
+<div class="toast-stack" id="toast-stack" role="status" aria-live="polite"></div>
+
+<!-- Inside Acumatica only: a quiet bubble that opens the app in its own tab. -->
+<a class="pop-out" href="{{ base_url }}/" target="_blank" rel="noopener" aria-label="Open ScanShip in a new tab">
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5L8 8"/><path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>
+</a>
+
+<script>
+  // Injected from config.py, which is gitignored: never hardcode the key.
+  const BASE    = {{ base_url | tojson }};
+  const API_KEY = {{ api_key | tojson }};
+</script>
+<script src="{{ base_url }}/static/js/app.js?v={{ asset_v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
