@@ -22,6 +22,10 @@
   --warn: #8A5A00; --warn-bg: #FFF4D6; --warn-bg-h: #FDEDC0; --warn-line: #E9C46A;
   --block: #B42318; --block-bg: #FDECEA; --block-line: #F1B3AD;
   --amber: #C8A44D; --amber-stroke: #A8873A;
+  /* Source tags (Rebate Validation inventory map, MatchType). AlternateID/Xref are tints of
+     #33CCFF, Xref deeper (it carries a confirmed Lowe's Item Number); text keeps 4.5:1 on its tint. */
+  --match-alt-bg: #D9F5FF; --match-alt-text: #07698C; --match-xref-bg: #B3EBFF; --match-xref-text: #055A78;
+  --match-stock-unconf-bg: #F2F6FA; --match-stock-unconf-text: #3F5F7D; --match-manual-bg: #FFF1CC; --match-manual-text: #8A5A00;
   /* Focus */
   --focus: #1C3D5A; --ring: 0 0 0 3px rgba(28,61,90,.12); --ring-strong: 0 0 0 3px rgba(28,61,90,.25);
   /* Shape */
