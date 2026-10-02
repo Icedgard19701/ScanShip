@@ -43,17 +43,18 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .skip:focus { top: 12px; }
 
 /* ---------------------------------------------------------------- window
-   <body> > .app-frame (header, side menu, .app-body). Desktop (> 1180 × 720,
-   outside an iframe): a floating card centred on a white ground, filling the
-   viewport minus a gap that scales with the screen, up to 1480×920 (the
-   height subtracts the gap, or a short viewport cuts the card). Smaller, or
-   inside Acumatica (html.embedded): full-bleed, no radius, no shadow. The
-   frame must stretch to the full height there: body never centres it. */
+   <body> > .app-frame (header, side menu, .app-body). Any viewport larger than
+   1180 × 720 — a browser tab or Acumatica's iframe (about 1650×940 on 1080p) —
+   shows a floating card centred on a white ground, filling the viewport minus
+   a gap that scales with the screen, up to 1480×920 (the height subtracts the
+   gap, or a short viewport cuts the card). Smaller (laptop iframe ~1100×630,
+   tablet, phone): full-bleed, no radius, no shadow, and the frame stretches to
+   the full height (body centres it only in card mode). */
 .app-frame { flex: 1; min-height: 0; width: 100%; position: relative; display: flex; flex-direction: column; background: var(--surface); }
 .app-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
 @media (min-width: 1181px) and (min-height: 721px) {
-  html:not(.embedded) body { --gap: clamp(20px, 4vmin, 48px); padding: var(--gap); align-items: center; justify-content: center; }
-  html:not(.embedded) .app-frame { width: min(1480px, 100%); height: min(920px, calc(100dvh - 2 * var(--gap))); flex: none;
+  body { --gap: clamp(20px, 4vmin, 48px); padding: var(--gap); align-items: center; justify-content: center; }
+  .app-frame { width: min(1480px, 100%); height: min(920px, calc(100dvh - 2 * var(--gap))); flex: none;
     border-radius: var(--r-window); overflow: hidden; box-shadow: var(--shadow-window); }
 }
 
